@@ -11,6 +11,7 @@ from . import (
     neotoma,
     openalex,
     paleoclimate,
+    taxonomy,
     pbdb,
 )
 
@@ -23,6 +24,7 @@ __all__ = [
     "gbif",
     "gnparser",
     "paleoclimate",
+    "taxonomy",
     "crossref",
     "openalex",
     "mindat",

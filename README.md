@@ -43,8 +43,13 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
 | **Crossref** | Bibliographic works → `literature` |
 | **OpenAlex** | Relevance-ranked works → `literature` (merged with Crossref, DOI-deduped) |
+| **Taxonomy** | Full GBIF + PBDB rank hierarchy → `taxonomy` (first block) |
 | **GNparser** | Global Names Parser — canonical taxon parse → `name_parse` |
 | **Mindat** | Minerals / geomaterials + localities → `minerals` (needs API key) |
+
+### Taxonomy (full breakdown)
+
+Uses GBIF `/species/match` + `/parents` and PBDB `/taxa/single` to build a root→tip hierarchy (kingdom through species/infraspecific ranks when available), plus a parallel PBDB paleo chain. Appears first in the synthesize payload as `taxonomy`.
 
 ### GNparser (Global Names Parser)
 

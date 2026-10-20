@@ -230,6 +230,32 @@ class AdapterDiagnostic(BaseModel):
 
 
 
+
+class TaxonomyRank(BaseModel):
+    rank: str
+    name: str
+    source: str | None = None
+    taxon_key: str | None = None
+    authorship: str | None = None
+    status: str | None = None
+
+
+class TaxonomyBlock(BaseModel):
+    query: str | None = None
+    accepted_name: str | None = None
+    scientific_name: str | None = None
+    rank: str | None = None
+    taxonomic_status: str | None = None
+    confidence: OptInt = None
+    match_type: str | None = None
+    hierarchy: list[TaxonomyRank] = Field(default_factory=list)
+    pbdb_hierarchy: list[TaxonomyRank] = Field(default_factory=list)
+    gbif_usage_key: OptInt = None
+    gbif_url: str | None = None
+    pbdb_url: str | None = None
+    status: str | None = None
+
+
 class NameParseRecord(BaseModel):
     provider: str = "GNparser"
     parsed: bool = False
@@ -264,6 +290,7 @@ class SynthesizeResponse(BaseModel):
     execution_time_ms: float
     cache_status: str
     query: QueryBlock
+    taxonomy: TaxonomyBlock = Field(default_factory=TaxonomyBlock)
     geology: GeologyBlock
     paleoclimate_proxy: PaleoclimateProxy
     occurrences: OccurrencesBlock

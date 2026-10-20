@@ -426,3 +426,28 @@ button.linkish:hover {
   filter: none;
   transform: none;
 }
+
+.taxonomy-tree {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.taxonomy-tree li {
+  padding: 0.2rem 0;
+}
+
+.tax-rank {
+  display: inline-block;
+  min-width: 7.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tax-name {
+  font-weight: 600;
+  font-style: italic;
+}

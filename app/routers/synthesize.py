@@ -29,6 +29,8 @@ from ..models.schemas import (
     MineralsBlock,
     NameParseBlock,
     NameParseRecord,
+    TaxonomyBlock,
+    TaxonomyRank,
     OccurrenceBrowseLink,
     OccurrenceFeature,
     OccurrencesBlock,
@@ -178,6 +180,26 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         status=None if gn_status == "ok" else gn_status,
     )
 
+    tax = results.get("TAXONOMY")
+    tax_data = (tax.data or {}) if tax else {}
+    tax_status = tax.status if tax else "skipped"
+    taxonomy_block = TaxonomyBlock(
+        query=tax_data.get("query") or params.taxon,
+        accepted_name=tax_data.get("accepted_name"),
+        scientific_name=tax_data.get("scientific_name"),
+        rank=tax_data.get("rank"),
+        taxonomic_status=tax_data.get("taxonomic_status"),
+        confidence=tax_data.get("confidence"),
+        match_type=tax_data.get("match_type"),
+        hierarchy=_safe_models(TaxonomyRank, tax_data.get("hierarchy") or []),
+        pbdb_hierarchy=_safe_models(TaxonomyRank, tax_data.get("pbdb_hierarchy") or []),
+        gbif_usage_key=tax_data.get("gbif_usage_key"),
+        gbif_url=tax_data.get("gbif_url"),
+        pbdb_url=tax_data.get("pbdb_url"),
+        status=None if tax_status == "ok" else tax_status,
+    )
+
+
     gts = normalize_age_bounds(params.age_min, params.age_max)
     body = SynthesizeResponse(
         status="success",
@@ -194,6 +216,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
                 age_max_ma=gts.get("age_max_ma"),  # type: ignore[arg-type]
             ),
         ),
+        taxonomy=taxonomy_block,
         geology=geology,
         paleoclimate_proxy=paleoclimate,
         occurrences=OccurrencesBlock(
@@ -263,6 +286,7 @@ async def synthesize(
 
     t0 = time.perf_counter()
     names = [
+        ("TAXONOMY", adapters.taxonomy.fetch_and_parse),
         ("PBDB", adapters.pbdb.fetch_and_parse),
         ("MACROSTRAT", adapters.macrostrat.fetch_and_parse),
         ("NEOTOMA", adapters.neotoma.fetch_and_parse),

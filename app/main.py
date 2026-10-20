@@ -51,6 +51,7 @@ def index() -> dict:
             "/api/v1/synthesize?taxon=Hadrosaurus&lat=34.55&lng=-78.45&radius_km=50"
         ),
         "live_adapters": [
+            "TAXONOMY",
             "PBDB",
             "MACROSTRAT",
             "NEOTOMA",

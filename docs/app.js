@@ -156,6 +156,8 @@
     const literature = data.literature || [];
     const studies = data.paleoclimate_proxy?.studies || [];
     const parses = data.name_parse?.parses || [];
+    const hierarchy = data.taxonomy?.hierarchy || [];
+    const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
 
 
     const nameHtml = parses.length
@@ -172,6 +174,36 @@
             </li>`)
           .join("")}</ul>`
       : `<p class="empty">No name parse.</p>`;
+
+
+    const taxHtml = hierarchy.length
+      ? `<ol class="taxonomy-tree">${hierarchy
+          .map(
+            (r) =>
+              `<li><span class="tax-rank">${esc(r.rank)}</span> <span class="tax-name">${esc(
+                r.name
+              )}</span> <span class="item-meta">${esc(r.source || "")}</span></li>`
+          )
+          .join("")}</ol>
+        <p class="item-meta">
+          ${data.taxonomy?.scientific_name ? esc(data.taxonomy.scientific_name) : ""}
+          ${data.taxonomy?.taxonomic_status ? ` · ${esc(data.taxonomy.taxonomic_status)}` : ""}
+          ${data.taxonomy?.gbif_url ? ` · <a href="${esc(data.taxonomy.gbif_url)}" target="_blank" rel="noopener">GBIF</a>` : ""}
+          ${data.taxonomy?.pbdb_url ? ` · <a href="${esc(data.taxonomy.pbdb_url)}" target="_blank" rel="noopener">PBDB</a>` : ""}
+        </p>
+        ${
+          pbdbHier.length
+            ? `<p class="sub">PBDB paleo classification</p><ol class="taxonomy-tree">${pbdbHier
+                .map(
+                  (r) =>
+                    `<li><span class="tax-rank">${esc(r.rank)}</span> <span class="tax-name">${esc(
+                      r.name
+                    )}</span></li>`
+                )
+                .join("")}</ol>`
+            : ""
+        }`
+      : `<p class="empty">No taxonomy hierarchy.</p>`;
 
     const geologyHtml = units.length
       ? `<ul class="list">${units
@@ -326,6 +358,13 @@
 
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
+      block(
+        "Taxonomy",
+        data.taxonomy?.accepted_name
+          ? `Accepted: ${data.taxonomy.accepted_name}`
+          : "Full rank hierarchy",
+        taxHtml
+      ),
       block("Name parse", `${parses.length} GNparser result(s)`, nameHtml),
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
       block("Occurrences", `${features.length} GeoJSON feature(s)`, occHtml),

@@ -24,9 +24,79 @@ MINDAT_SEARCH = "https://api.mindat.org/v1/geomaterials-search/"
 MINDAT_DETAIL = "https://api.mindat.org/v1/geomaterials/1/"
 MINDAT_LOCS = "https://api.mindat.org/v1/localities/"
 GNPARSER_URL = "https://parser.globalnames.org/api/v1/"
+GBIF_MATCH = "https://api.gbif.org/v1/species/match"
+PBDB_TAXA = "https://paleobiodb.org/data1.2/taxa/single.json"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
+
+    router.get(GBIF_MATCH).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "usageKey": 99,
+                "scientificName": "Hadrosaurus foulkii",
+                "canonicalName": "Hadrosaurus foulkii",
+                "rank": "SPECIES",
+                "status": "ACCEPTED",
+                "confidence": 95,
+                "matchType": "EXACT",
+                "kingdom": "Animalia",
+                "phylum": "Chordata",
+                "class": "Reptilia",
+                "order": "Ornithischia",
+                "family": "Hadrosauridae",
+                "genus": "Hadrosaurus",
+                "species": "Hadrosaurus foulkii",
+            },
+        )
+    )
+    router.get("https://api.gbif.org/v1/species/99/parents").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"rank": "KINGDOM", "canonicalName": "Animalia", "key": 1},
+                {"rank": "PHYLUM", "canonicalName": "Chordata", "key": 44},
+                {"rank": "CLASS", "canonicalName": "Reptilia", "key": 358},
+                {"rank": "ORDER", "canonicalName": "Ornithischia", "key": 1},
+                {"rank": "FAMILY", "canonicalName": "Hadrosauridae", "key": 2},
+                {"rank": "GENUS", "canonicalName": "Hadrosaurus", "key": 3},
+            ],
+        )
+    )
+    router.get("https://api.gbif.org/v1/species/99").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "key": 99,
+                "canonicalName": "Hadrosaurus foulkii",
+                "scientificName": "Hadrosaurus foulkii Leidy, 1858",
+                "rank": "SPECIES",
+                "taxonomicStatus": "ACCEPTED",
+            },
+        )
+    )
+    router.get(PBDB_TAXA).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "records": [
+                    {
+                        "oid": "txn:1",
+                        "nam": "Hadrosaurus foulkii",
+                        "acn": "Hadrosaurus foulkii",
+                        "att": "Leidy 1858",
+                        "kgl": "Animalia",
+                        "phl": "Chordata",
+                        "cll": "Osteichthyes",
+                        "odl": "Ornithischia",
+                        "fml": "Hadrosauridae",
+                        "gnl": "Hadrosaurus",
+                    }
+                ]
+            },
+        )
+    )
     router.get(PBDB_URL).mock(
         return_value=httpx.Response(
             200,
@@ -316,6 +386,10 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["specimens"]["voucher_count"] == 1
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
+    assert providers["TAXONOMY"] == "ok"
+    assert body["taxonomy"]["accepted_name"] == "Hadrosaurus foulkii"
+    assert len(body["taxonomy"]["hierarchy"]) >= 6
+    assert body["taxonomy"]["hierarchy"][0]["rank"] == "KINGDOM"
     assert providers["MORPHOSOURCE"] == "ok"
     assert body["media_3d"]["has_3d_assets"] is True
     assert body["media_3d"]["records"][0]["media_id"] == "000852930"
@@ -362,6 +436,8 @@ def test_synthesize_happy_path(client, monkeypatch):
 @respx.mock
 def test_adapter_failure_still_200(client, monkeypatch):
     monkeypatch.setenv("MINDAT_API_KEY", "test-token")
+    respx.get(GBIF_MATCH).mock(return_value=httpx.Response(200, json={}))
+    respx.get(PBDB_TAXA).mock(return_value=httpx.Response(200, json={"records": []}))
     respx.get(PBDB_URL).mock(return_value=httpx.Response(500, text="boom"))
     respx.get(MACRO_URL).mock(
         return_value=httpx.Response(200, json={"success": {"data": []}})
