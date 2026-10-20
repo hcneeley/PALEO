@@ -10,12 +10,18 @@
   const submitBtn = document.getElementById("submit-btn");
   const exampleBtn = document.getElementById("example-btn");
   const clearBtn = document.getElementById("clear-btn");
+  const topBtn = document.getElementById("top-btn");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
   const sectionNav = document.getElementById("section-nav");
   const sectionNavList = document.getElementById("section-nav-list");
   /** @type {IntersectionObserver | null} */
   let sectionObserver = null;
+
+  topBtn?.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  });
 
   /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
   const paging = { cancel: false, busy: false, ctx: null };
