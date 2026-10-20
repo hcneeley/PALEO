@@ -34,18 +34,34 @@
             id="taxon"
             name="taxon"
             type="search"
-            placeholder="Canis dirus, Hadrosaurus, quartz…"
+            placeholder="e.g. Canis dirus"
             autofocus
           />
         </label>
         <div class="field-row">
           <label class="field">
             <span>Latitude</span>
-            <input id="lat" name="lat" type="number" step="any" placeholder="34.05" />
+            <input
+              id="lat"
+              name="lat"
+              type="number"
+              step="any"
+              value=""
+              placeholder="e.g. 34.05"
+              autocomplete="off"
+            />
           </label>
           <label class="field">
             <span>Longitude</span>
-            <input id="lng" name="lng" type="number" step="any" placeholder="-118.25" />
+            <input
+              id="lng"
+              name="lng"
+              type="number"
+              step="any"
+              value=""
+              placeholder="e.g. -118.25"
+              autocomplete="off"
+            />
           </label>
           <label class="field">
             <span>Radius (km)</span>
@@ -55,18 +71,38 @@
               type="number"
               step="any"
               min="0"
-              placeholder="500"
+              value=""
+              placeholder="optional"
+              autocomplete="off"
             />
           </label>
         </div>
         <div class="field-row field-row-3">
           <label class="field">
             <span>Age min (younger, Ma)</span>
-            <input id="age_min" name="age_min" type="number" step="any" min="0" placeholder="0.01" />
+            <input
+              id="age_min"
+              name="age_min"
+              type="number"
+              step="any"
+              min="0"
+              value=""
+              placeholder="optional"
+              autocomplete="off"
+            />
           </label>
           <label class="field">
             <span>Age max (older, Ma)</span>
-            <input id="age_max" name="age_max" type="number" step="any" min="0" placeholder="2.5" />
+            <input
+              id="age_max"
+              name="age_max"
+              type="number"
+              step="any"
+              min="0"
+              value=""
+              placeholder="optional"
+              autocomplete="off"
+            />
           </label>
           <label class="field">
             <span>Results per source</span>
@@ -78,6 +114,8 @@
               min="1"
               max="300"
               value="50"
+              placeholder="1–300"
+              autocomplete="off"
             />
           </label>
         </div>

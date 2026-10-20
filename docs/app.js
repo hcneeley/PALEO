@@ -56,6 +56,15 @@
     document.getElementById("taxon").focus();
   });
 
+  /** Read only the typed value — never the placeholder attribute. */
+  function fieldValue(id) {
+    const el = document.getElementById(id);
+    if (!el) return "";
+    const raw = el.value;
+    if (raw == null) return "";
+    return String(raw).trim();
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     hint.textContent = "";
@@ -63,18 +72,23 @@
     paging.cancel = true;
     paging.busy = false;
 
-    const taxon = (document.getElementById("taxon").value || "").trim();
-    const lat = (document.getElementById("lat").value || "").trim();
-    const lng = (document.getElementById("lng").value || "").trim();
-    const radius = (document.getElementById("radius_km").value || "").trim();
-    const ageMin = (document.getElementById("age_min").value || "").trim();
-    const ageMax = (document.getElementById("age_max").value || "").trim();
-    const limitRaw = (document.getElementById("limit").value || "").trim();
+    const taxon = fieldValue("taxon");
+    const lat = fieldValue("lat");
+    const lng = fieldValue("lng");
+    const radius = fieldValue("radius_km");
+    const ageMin = fieldValue("age_min");
+    const ageMax = fieldValue("age_max");
+    const limitRaw = fieldValue("limit");
     const limit = limitRaw === "" ? DEFAULT_LIMIT : Number(limitRaw);
     const loadAll = Boolean(document.getElementById("load_all")?.checked);
 
     if (!taxon && !(lat && lng)) {
       hint.textContent = "Provide a taxon/mineral and/or both latitude and longitude.";
+      hint.classList.add("error");
+      return;
+    }
+    if ((lat && !lng) || (!lat && lng)) {
+      hint.textContent = "Provide both latitude and longitude, or leave both blank.";
       hint.classList.add("error");
       return;
     }
@@ -99,11 +113,12 @@
 
     const qs = new URLSearchParams();
     if (taxon) qs.set("taxon", taxon);
-    if (lat) qs.set("lat", lat);
-    if (lng) qs.set("lng", lng);
-    if (radius) qs.set("radius_km", radius);
-    if (ageMin) qs.set("age_min", ageMin);
-    if (ageMax) qs.set("age_max", ageMax);
+    // Only include optional filters when the user actually typed a value.
+    if (lat !== "") qs.set("lat", lat);
+    if (lng !== "") qs.set("lng", lng);
+    if (radius !== "") qs.set("radius_km", radius);
+    if (ageMin !== "") qs.set("age_min", ageMin);
+    if (ageMax !== "") qs.set("age_max", ageMax);
     qs.set("limit", String(limit));
 
     const url = `${apiBase}/api/v1/synthesize?${qs.toString()}`;
