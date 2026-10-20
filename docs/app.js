@@ -52,6 +52,16 @@
       hint.classList.add("error");
       return;
     }
+    if ((ageMin !== "" && Number(ageMin) < 0) || (ageMax !== "" && Number(ageMax) < 0)) {
+      hint.textContent = "Age bounds must be ≥ 0 Ma (million years ago).";
+      hint.classList.add("error");
+      return;
+    }
+    if (ageMin !== "" && ageMax !== "" && Number(ageMin) > Number(ageMax)) {
+      hint.textContent = "Age min (younger) cannot be greater than age max (older).";
+      hint.classList.add("error");
+      return;
+    }
 
     const apiBase = resolveApiBase();
     localStorage.setItem("upae_api_base", apiBase);
