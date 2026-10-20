@@ -74,16 +74,9 @@ Uses the Occurrence Search API (`GET https://api.gbif.org/v1/occurrence/search`)
 Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&search_field=all_fields`. Records map MorphoSource media fields (id, title, media type, modality, device facility, physical object id/title/organization/type/taxonomy, descriptions, element/part, DOI, ARK, dates) into `media_3d.records`.
 
 
-## Web UI (GitHub Pages)
+## Web UI
 
-Static search UI lives in [`docs/`](docs/) and talks to the live API on Render.
-
-1. On GitHub: **Settings → Pages → Build and deployment**
-2. Source: **Deploy from a branch**
-3. Branch: `main` / folder: `/docs`
-4. Open `https://hcneeley.github.io/upae/`
-
-Default API host is `https://upae-ff1k.onrender.com` (change under **Age bounds & API host**, or pass `?api=https://…`).
+Try the search interface at [hcneeley.github.io/upae](https://hcneeley.github.io/upae/) — enter a taxon or mineral, optional location and age bounds, and browse synthesized geology, occurrences, specimens, minerals, and literature from the live API.
 
 ## Tests
 
