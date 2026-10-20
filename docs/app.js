@@ -7,24 +7,12 @@
   const exampleBtn = document.getElementById("example-btn");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
-  const apiInput = document.getElementById("api_base");
-  const apiLink = document.getElementById("api-link");
 
   function resolveApiBase() {
     const params = new URLSearchParams(window.location.search);
     const fromQuery = (params.get("api") || "").trim().replace(/\/$/, "");
-    const stored = (localStorage.getItem("upae_api_base") || "").trim().replace(/\/$/, "");
-    const typed = (apiInput.value || "").trim().replace(/\/$/, "");
-    return fromQuery || typed || stored || DEFAULT_API;
+    return fromQuery || DEFAULT_API;
   }
-
-  function syncApiUi() {
-    const base = resolveApiBase();
-    if (!apiInput.value) apiInput.value = base;
-    apiLink.href = `${base}/api/v1/`;
-  }
-
-  syncApiUi();
 
   exampleBtn.addEventListener("click", () => {
     document.getElementById("taxon").value = "Canis dirus";
@@ -64,8 +52,6 @@
     }
 
     const apiBase = resolveApiBase();
-    localStorage.setItem("upae_api_base", apiBase);
-    syncApiUi();
 
     const qs = new URLSearchParams();
     if (taxon) qs.set("taxon", taxon);

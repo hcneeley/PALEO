@@ -11,7 +11,8 @@
   --ok: #7ec98a;
   --warn: #d4b35a;
   --skip: #7a8f84;
-  --radius: 4px;
+  --radius: 10px;
+  --font-title: Krungthep, "Krungthep", "Trirong", "Sora", sans-serif;
   --font-display: "Fraunces", "Times New Roman", serif;
   --font-ui: "Sora", "Avenir Next", sans-serif;
 }
@@ -64,31 +65,25 @@ body {
 
 .hero {
   margin-bottom: 2rem;
+  text-align: center;
   animation: rise 0.7s ease-out both;
 }
 
 .brand {
-  margin: 0 0 0.75rem;
-  font-family: var(--font-display);
-  font-size: clamp(3.2rem, 10vw, 5.5rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 0.9;
+  margin: 0 auto 1rem;
+  max-width: 18ch;
+  font-family: var(--font-title);
+  font-size: clamp(1.85rem, 5.5vw, 2.85rem);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
   color: var(--ink);
-}
-
-.tagline {
-  margin: 0 0 0.75rem;
-  font-family: var(--font-display);
-  font-size: clamp(1.35rem, 3.5vw, 1.85rem);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  color: var(--amber);
+  text-wrap: balance;
 }
 
 .lede {
-  margin: 0;
-  max-width: 38rem;
+  margin: 0 auto;
+  max-width: 36rem;
   color: var(--muted);
 }
 
@@ -133,6 +128,10 @@ body {
   gap: 0.75rem;
 }
 
+.field-row-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 input {
   width: 100%;
   border: 1px solid var(--line);
@@ -148,22 +147,6 @@ input {
 input:focus {
   border-color: var(--mint);
   box-shadow: 0 0 0 3px rgba(111, 191, 166, 0.15);
-}
-
-.advanced {
-  border: none;
-}
-
-.advanced summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.85rem;
-  user-select: none;
-}
-
-.advanced[open] summary {
-  margin-bottom: 0.75rem;
-  color: var(--ink);
 }
 
 .actions {
@@ -220,8 +203,10 @@ button.ghost:hover {
 
 .status {
   margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(21, 32, 27, 0.65);
   animation: rise 0.45s ease-out both;
 }
 
@@ -273,25 +258,37 @@ button.ghost:hover {
 
 .results {
   display: grid;
-  gap: 1.5rem;
-  margin-top: 1.5rem;
+  gap: 1.15rem;
+  margin-top: 1.75rem;
   animation: rise 0.55s 0.05s ease-out both;
 }
 
 .block {
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(232, 239, 230, 0.04), transparent 42%),
+    rgba(21, 32, 27, 0.72);
+  box-shadow: inset 0 1px 0 rgba(232, 239, 230, 0.04);
+}
+
+.block + .block {
+  margin-top: 0;
 }
 
 .block h2 {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(224, 164, 90, 0.28);
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 500;
+  color: var(--amber);
 }
 
 .block .sub {
-  margin: 0 0 0.9rem;
+  margin: 0 0 0.95rem;
   color: var(--muted);
   font-size: 0.88rem;
 }
@@ -389,7 +386,12 @@ th {
     padding-top: 2.25rem;
   }
 
-  .field-row {
+  .brand {
+    max-width: none;
+  }
+
+  .field-row,
+  .field-row-2 {
     grid-template-columns: 1fr;
   }
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>UPAE — Unified Paleontology API Engine</title>
+    <title>Unified Paleontology API Engine</title>
     <meta
       name="description"
       content="Search taxa, minerals, and places across paleontology, geology, and biodiversity sources in one view."
@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Sora:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -20,8 +20,7 @@
     <div class="atmosphere" aria-hidden="true"></div>
     <main class="shell">
       <header class="hero">
-        <p class="brand">UPAE</p>
-        <h1 class="tagline">Search the deep record in one place</h1>
+        <h1 class="brand">Unified Paleontology API Engine</h1>
         <p class="lede">
           Federate fossils, strata, specimens, minerals, climate proxies, and
           literature from a single query.
@@ -60,28 +59,16 @@
             />
           </label>
         </div>
-        <details class="advanced">
-          <summary>Age bounds &amp; API host</summary>
-          <div class="field-row">
-            <label class="field">
-              <span>Age min (younger, Ma)</span>
-              <input id="age_min" name="age_min" type="number" step="any" min="0" placeholder="0.01" />
-            </label>
-            <label class="field">
-              <span>Age max (older, Ma)</span>
-              <input id="age_max" name="age_max" type="number" step="any" min="0" placeholder="2.5" />
-            </label>
-            <label class="field">
-              <span>API base URL</span>
-              <input
-                id="api_base"
-                name="api_base"
-                type="url"
-                placeholder="https://upae-ff1k.onrender.com"
-              />
-            </label>
-          </div>
-        </details>
+        <div class="field-row field-row-2">
+          <label class="field">
+            <span>Age min (younger, Ma)</span>
+            <input id="age_min" name="age_min" type="number" step="any" min="0" placeholder="0.01" />
+          </label>
+          <label class="field">
+            <span>Age max (older, Ma)</span>
+            <input id="age_max" name="age_max" type="number" step="any" min="0" placeholder="2.5" />
+          </label>
+        </div>
         <div class="actions">
           <button type="submit" id="submit-btn">Synthesize</button>
           <button type="button" id="example-btn" class="ghost">Try Canis dirus @ LA</button>
@@ -93,7 +80,7 @@
       <section id="results" class="results" hidden></section>
     </main>
     <footer class="foot">
-      <a id="api-link" href="https://upae-ff1k.onrender.com/api/v1/">API</a>
+      <a href="https://upae-ff1k.onrender.com/api/v1/">API</a>
       <a href="https://github.com/hcneeley/upae">GitHub</a>
     </footer>
     <script src="./app.js"></script>
