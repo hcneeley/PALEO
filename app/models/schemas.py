@@ -39,6 +39,20 @@ class GeologyBlock(BaseModel):
     macrostrat_units: list[MacrostratUnit] = Field(default_factory=list)
 
 
+class PaleoclimateStudy(BaseModel):
+    study_id: str | None = None
+    noaa_study_id: str | None = None
+    study_name: str | None = None
+    doi: str | None = None
+    data_type: str | None = None
+    investigators: str | None = None
+    site_name: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    data_publisher: str | None = None
+    url: str | None = None
+
+
 class PaleoclimateProxy(BaseModel):
     target_ma: float | None = None
     estimated_mat_celsius: float | None = None
@@ -46,6 +60,8 @@ class PaleoclimateProxy(BaseModel):
     estimated_pco2_ppm: float | None = None
     model_source: str | None = None
     status: str | None = None
+    study_count: int = 0
+    studies: list[PaleoclimateStudy] = Field(default_factory=list)
 
 
 class GeoJSONGeometry(BaseModel):

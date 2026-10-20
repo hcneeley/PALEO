@@ -45,6 +45,7 @@ def index() -> dict:
             "IDIGBIO",
             "MORPHOSOURCE",
             "GBIF",
+            "PALEOCLIMATE",
         ],
-        "stub_adapters": ["PALEOCLIMATE", "CROSSREF"],
+        "stub_adapters": ["CROSSREF"],
     }

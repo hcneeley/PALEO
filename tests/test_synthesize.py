@@ -17,6 +17,7 @@ NEOTOMA_OCC = "https://api.neotomadb.org/v2.0/data/occurrences"
 IDIG_URL = "https://search.idigbio.org/v2/search/records"
 MS_URL = "https://www.morphosource.org/api/media"
 GBIF_URL = "https://api.gbif.org/v1/occurrence/search"
+NOAA_URL = "https://www.ncei.noaa.gov/access/paleo-search/study/search.json"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
@@ -140,6 +141,34 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(NOAA_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "study": [
+                    {
+                        "xmlId": 9101,
+                        "NOAAStudyId": 10437,
+                        "studyName": "Example climate reconstruction",
+                        "doi": "https://doi.org/10.25921/example",
+                        "dataPublisher": "NOAA",
+                        "dataType": ["CLIMATE RECONSTRUCTIONS"],
+                        "investigators": "Doe, J.",
+                        "site": [
+                            {
+                                "siteName": "Test Site",
+                                "geo": {
+                                    "geometry": {"type": "Point", "coordinates": [34.55, -78.45]},
+                                    "properties": {},
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "page": [],
+            },
+        )
+    )
 
 
 @respx.mock
@@ -168,6 +197,10 @@ def test_synthesize_happy_path(client):
         f["properties"]["database_source"] == "GBIF"
         for f in body["occurrences"]["features"]
     )
+    assert providers["PALEOCLIMATE"] == "ok"
+    assert body["paleoclimate_proxy"]["study_count"] == 1
+    assert body["paleoclimate_proxy"]["studies"][0]["study_id"] == "9101"
+    assert body["paleoclimate_proxy"]["model_source"] == "NCEI Paleo Search (NOAA)"
 
 
 @respx.mock
@@ -183,6 +216,9 @@ def test_adapter_failure_still_200(client):
     )
     respx.get(GBIF_URL).mock(
         return_value=httpx.Response(200, json={"count": 0, "results": []})
+    )
+    respx.get(NOAA_URL).mock(
+        return_value=httpx.Response(200, json={"study": [], "page": []})
     )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})

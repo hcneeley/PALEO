@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, and GBIF; stubs for PaleoDAP and CrossRef; in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, and NOAA NCEI Paleo Search; stub for CrossRef; in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -40,6 +40,11 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **iDigBio** | Museum specimen vouchers |
 | **MorphoSource** | 3D / CT media (`/api/media`) → `media_3d` |
 | **GBIF** | Extant occurrence search → GeoJSON features |
+| **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
+
+### NCEI Paleo Search (NOAA)
+
+Uses [`study/search.json`](https://www.ncei.noaa.gov/access/paleo-search/api) with `dataPublisher=NOAA`, optional lat/lng bbox from `radius_km`, `searchText` from taxon, and age bounds as years BP. Docs: [API](https://www.ncei.noaa.gov/access/paleo-search/api). Studies appear under `paleoclimate_proxy.studies` (NOAA caps full study pages at 10).
 
 ### GBIF
 
@@ -51,7 +56,7 @@ Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&s
 
 ## Stubs (MVP)
 
-PaleoDAP / paleoclimate and CrossRef return empty collections with `status: stub` in diagnostics.
+CrossRef returns an empty literature list with `status: stub` in diagnostics.
 
 ## Tests
 
@@ -82,7 +87,7 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 ## Roadmap (post-MVP)
 
 - Redis cache + PostGIS spatial helpers
-- Wire PaleoDAP and CrossRef
+- Wire CrossRef bibliographic linkage
 - Taxonomic synonym resolution + bibliographic DOI linkage
 - Docker Compose
 
@@ -94,4 +99,5 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 - [iDigBio search](https://github.com/iDigBio/idigbio-search-api/wiki)
 - [MorphoSource API](https://github.com/MorphoSource/morphosource-api)
 - [GBIF OpenAPI](https://techdocs.gbif.org/en/openapi/)
+- [NCEI Paleo Search API](https://www.ncei.noaa.gov/access/paleo-search/api)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)
