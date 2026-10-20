@@ -20,11 +20,15 @@ class QueryParams:
     age_min: float | None = None
     age_max: float | None = None
     limit: int | None = None
+    offset: int = 0
 
     def result_limit(self) -> int:
-        """Per-source max records for this request (clamped 1–100)."""
+        """Per-source page size for this request (clamped 1–300)."""
         n = self.limit if self.limit is not None else settings.occurrence_limit
-        return max(1, min(int(n), 100))
+        return max(1, min(int(n), 300))
+
+    def result_offset(self) -> int:
+        return max(0, int(self.offset or 0))
 
 
 @dataclass

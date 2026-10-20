@@ -203,6 +203,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             200,
             json={
                 "count": 1,
+                "endOfRecords": True,
                 "results": [
                     {
                         "key": 111,
@@ -383,6 +384,9 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["occurrences"]["total_records"] >= 1
     assert body["occurrences"]["view_all_url"]
     assert any(l["provider"] == "PBDB" for l in body["occurrences"]["browse_links"])
+    gbif_total = next(s for s in body["occurrences"]["source_totals"] if s["provider"] == "GBIF")
+    assert gbif_total["returned"] >= 1
+    assert gbif_total["total"] == 1
     assert body["specimens"]["voucher_count"] == 1
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
@@ -519,7 +523,7 @@ def test_limit_param_changes_cache_key(client, monkeypatch):
 def test_limit_out_of_range_422(client):
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 0})
     assert r.status_code == 422
-    r2 = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 101})
+    r2 = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 301})
     assert r2.status_code == 422
 
 

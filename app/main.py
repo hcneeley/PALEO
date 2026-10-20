@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .http import shutdown_http_client, startup_http_client
-from .routers import synthesize
+from .routers import occurrences, synthesize
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(synthesize.router)
+app.include_router(occurrences.router)
 
 
 @app.get("/")
@@ -47,8 +48,12 @@ def index() -> dict:
         "version": __version__,
         "mvp": True,
         "endpoint": "/api/v1/synthesize",
+        "occurrences_page": "/api/v1/occurrences",
         "example": (
             "/api/v1/synthesize?taxon=Hadrosaurus&lat=34.55&lng=-78.45&radius_km=50"
+        ),
+        "example_occurrences": (
+            "/api/v1/occurrences?provider=GBIF&taxon=Hadrosaurus&offset=50&limit=100"
         ),
         "live_adapters": [
             "TAXONOMY",

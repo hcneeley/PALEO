@@ -33,6 +33,7 @@ from ..models.schemas import (
     TaxonomyRank,
     OccurrenceBrowseLink,
     OccurrenceFeature,
+    OccurrenceSourceTotal,
     OccurrencesBlock,
     PaleoclimateProxy,
     QueryBlock,
@@ -103,15 +104,30 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     )
 
     features: list[OccurrenceFeature] = []
+    source_totals: list[OccurrenceSourceTotal] = []
     for key in ("PBDB", "NEOTOMA", "GBIF"):
         adapter = results.get(key)
         if not adapter:
             continue
-        for feat in (adapter.data or {}).get("features") or []:
+        raw_feats = (adapter.data or {}).get("features") or []
+        for feat in raw_feats:
             try:
                 features.append(OccurrenceFeature.model_validate(feat))
             except ValidationError:
                 continue
+        total = (adapter.data or {}).get("total_count")
+        if total is not None:
+            try:
+                total = int(total)
+            except (TypeError, ValueError):
+                total = None
+        source_totals.append(
+            OccurrenceSourceTotal(
+                provider=key,
+                returned=len(raw_feats),
+                total=total,
+            )
+        )
 
     idig = results.get("IDIGBIO")
     specimens_raw = (idig.data or {}).get("records") or [] if idig else []
@@ -224,6 +240,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
             features=features,
             view_all_url=view_all_url,
             browse_links=_occurrence_browse_links(params),
+            source_totals=source_totals,
         ),
         specimens=specimens,
         media_3d=media,
@@ -250,8 +267,8 @@ async def synthesize(
     limit: int | None = Query(
         None,
         ge=1,
-        le=100,
-        description="Max records per upstream source (default 50)",
+        le=300,
+        description="Max records per upstream source on first page (default 50, max 300)",
     ),
 ) -> dict:
     if lat is None and lng is None and not taxon:

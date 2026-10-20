@@ -1,5 +1,9 @@
 (() => {
   const DEFAULT_API = "https://upae-ff1k.onrender.com";
+  const DEFAULT_LIMIT = 50;
+  const MAX_LIMIT = 300;
+  const PAGE_SIZE = 300;
+  const SOFT_CAP = 5000;
 
   const form = document.getElementById("search-form");
   const hint = document.getElementById("form-hint");
@@ -8,7 +12,9 @@
   const clearBtn = document.getElementById("clear-btn");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
-  const DEFAULT_LIMIT = 50;
+
+  /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
+  const paging = { cancel: false, busy: false, ctx: null };
 
   function resolveApiBase() {
     const params = new URLSearchParams(window.location.search);
@@ -31,11 +37,16 @@
   });
 
   clearBtn.addEventListener("click", () => {
+    paging.cancel = true;
+    paging.busy = false;
+    paging.ctx = null;
     for (const id of fieldIds()) {
       const el = document.getElementById(id);
       if (!el) continue;
       el.value = id === "limit" ? String(DEFAULT_LIMIT) : "";
     }
+    const loadAll = document.getElementById("load_all");
+    if (loadAll) loadAll.checked = false;
     hint.textContent = "Provide a taxon/mineral and/or lat + lng.";
     hint.classList.remove("error");
     statusEl.hidden = true;
@@ -49,6 +60,8 @@
     event.preventDefault();
     hint.textContent = "";
     hint.classList.remove("error");
+    paging.cancel = true;
+    paging.busy = false;
 
     const taxon = (document.getElementById("taxon").value || "").trim();
     const lat = (document.getElementById("lat").value || "").trim();
@@ -58,6 +71,7 @@
     const ageMax = (document.getElementById("age_max").value || "").trim();
     const limitRaw = (document.getElementById("limit").value || "").trim();
     const limit = limitRaw === "" ? DEFAULT_LIMIT : Number(limitRaw);
+    const loadAll = Boolean(document.getElementById("load_all")?.checked);
 
     if (!taxon && !(lat && lng)) {
       hint.textContent = "Provide a taxon/mineral and/or both latitude and longitude.";
@@ -74,13 +88,14 @@
       hint.classList.add("error");
       return;
     }
-    if (!Number.isFinite(limit) || limit < 1 || limit > 100 || !Number.isInteger(limit)) {
-      hint.textContent = "Results per source must be a whole number from 1 to 100.";
+    if (!Number.isFinite(limit) || limit < 1 || limit > MAX_LIMIT || !Number.isInteger(limit)) {
+      hint.textContent = `Results per source must be a whole number from 1 to ${MAX_LIMIT}.`;
       hint.classList.add("error");
       return;
     }
 
     const apiBase = resolveApiBase();
+    const query = { taxon, lat, lng, radius, ageMin, ageMax, limit };
 
     const qs = new URLSearchParams();
     if (taxon) qs.set("taxon", taxon);
@@ -103,13 +118,13 @@
       const resp = await fetch(url);
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        throw new Error(body.detail || body.status || `HTTP ${resp.status}`);
+        throw new Error(formatApiError(body) || body.status || `HTTP ${resp.status}`);
       }
       if (body.status !== "success") {
         throw new Error(body.detail || "Synthesize failed");
       }
       renderStatus(body);
-      renderResults(body, limit);
+      renderResults(body, limit, { apiBase, query, loadAll });
     } catch (err) {
       hint.textContent = String(err.message || err);
       hint.classList.add("error");
@@ -119,6 +134,13 @@
       submitBtn.textContent = "Synthesize";
     }
   });
+
+  function formatApiError(body) {
+    const d = body?.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map((x) => x.msg || JSON.stringify(x)).join("; ");
+    return "";
+  }
 
   function esc(value) {
     return String(value ?? "")
@@ -162,7 +184,46 @@
     `;
   }
 
-  function renderResults(data, limit = DEFAULT_LIMIT) {
+  function occRowHtml(f) {
+    const p = f.properties || {};
+    const coords = f.geometry?.coordinates;
+    const where =
+      Array.isArray(coords) && coords.length >= 2
+        ? `${Number(coords[1]).toFixed(3)}, ${Number(coords[0]).toFixed(3)}`
+        : "—";
+    const paleo =
+      p.paleolat != null && p.paleolng != null
+        ? `${Number(p.paleolat).toFixed(2)}, ${Number(p.paleolng).toFixed(2)}`
+        : "—";
+    return `<tr>
+      <td>${esc(p.database_source)}</td>
+      <td>${esc(p.taxon_name || p.accepted_name || "—")}</td>
+      <td>${esc(where)}</td>
+      <td>${esc(paleo)}</td>
+      <td>${esc(p.max_ma ?? "—")}–${esc(p.min_ma ?? "—")}</td>
+    </tr>`;
+  }
+
+  function formatTotals(sourceTotals) {
+    if (!sourceTotals?.length) return "";
+    return sourceTotals
+      .map((s) => {
+        const total = s.total != null ? Number(s.total).toLocaleString() : "?";
+        return `${esc(s.provider)} ${esc(s.returned)} of ${esc(total)}`;
+      })
+      .join(" · ");
+  }
+
+  function gbifStateFromTotals(sourceTotals) {
+    const gbif = (sourceTotals || []).find((s) => s.provider === "GBIF");
+    if (!gbif) return null;
+    const returned = Number(gbif.returned) || 0;
+    const total = gbif.total != null ? Number(gbif.total) : null;
+    const hasMore = total == null ? returned > 0 : returned < total;
+    return { returned, total, hasMore, offset: returned };
+  }
+
+  function renderResults(data, limit = DEFAULT_LIMIT, opts = {}) {
     const units = data.geology?.macrostrat_units || [];
     const features = data.occurrences?.features || [];
     const specimens = data.specimens?.records || [];
@@ -174,12 +235,14 @@
     const parses = data.name_parse?.parses || [];
     const hierarchy = data.taxonomy?.hierarchy || [];
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
-    const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, 100));
-
+    const sourceTotals = data.occurrences?.source_totals || [];
+    const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
+    const gbif = gbifStateFromTotals(sourceTotals);
 
     const nameHtml = parses.length
       ? `<ul class="list">${parses
-          .map((n) => `<li>
+          .map(
+            (n) => `<li>
               <div class="item-title">${esc(n.canonical_simple || n.verbatim || "Name")}</div>
               <div class="item-meta">
                 ${esc(n.rank || "")}
@@ -188,10 +251,10 @@
                 ${n.authorship_normalized ? ` · ${esc(n.authorship_normalized)}` : ""}
                 ${n.url ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">GNparser</a>` : ""}
               </div>
-            </li>`)
+            </li>`
+          )
           .join("")}</ul>`
       : `<p class="empty">No name parse.</p>`;
-
 
     const taxHtml = hierarchy.length
       ? `<ol class="taxonomy-tree">${hierarchy
@@ -235,28 +298,6 @@
           .join("")}</ul>`
       : `<p class="empty">No Macrostrat units.</p>`;
 
-    const PREVIEW = Math.min(show, 40);
-    const occRow = (f) => {
-      const p = f.properties || {};
-      const coords = f.geometry?.coordinates;
-      const where =
-        Array.isArray(coords) && coords.length >= 2
-          ? `${Number(coords[1]).toFixed(3)}, ${Number(coords[0]).toFixed(3)}`
-          : "—";
-      const paleo =
-        p.paleolat != null && p.paleolng != null
-          ? `${Number(p.paleolat).toFixed(2)}, ${Number(p.paleolng).toFixed(2)}`
-          : "—";
-      return `<tr>
-        <td>${esc(p.database_source)}</td>
-        <td>${esc(p.taxon_name || p.accepted_name || "—")}</td>
-        <td>${esc(where)}</td>
-        <td>${esc(paleo)}</td>
-        <td>${esc(p.max_ma ?? "—")}–${esc(p.min_ma ?? "—")}</td>
-      </tr>`;
-    };
-    const occPreview = features.slice(0, PREVIEW).map(occRow).join("");
-    const occAll = features.map(occRow).join("");
     const browse = (data.occurrences?.browse_links || [])
       .map(
         (l) =>
@@ -268,21 +309,28 @@
     const viewAllApi = data.occurrences?.view_all_url
       ? `<a class="occ-link" href="${esc(data.occurrences.view_all_url)}" target="_blank" rel="noopener">Full JSON response</a>`
       : "";
+    const totalsLine = formatTotals(sourceTotals);
 
+    const canPageGbif = Boolean(gbif && gbif.hasMore);
     const occHtml = features.length
-      ? `<div class="table-wrap" id="occ-preview"><table>
+      ? `${
+          totalsLine ? `<p class="occ-totals">${totalsLine}</p>` : ""
+        }<div class="table-wrap"><table>
           <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
-          <tbody>${occPreview}</tbody>
+          <tbody id="occ-tbody">${features.map(occRowHtml).join("")}</tbody>
         </table></div>
-        <div class="table-wrap" id="occ-all" hidden><table>
-          <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
-          <tbody>${occAll}</tbody>
-        </table></div>
-        <p class="occ-links">
+        <p class="occ-progress" id="occ-progress">Showing <strong>${features.length}</strong> loaded occurrence(s)${
+          gbif?.total != null
+            ? ` · GBIF catalog <strong>${Number(gbif.total).toLocaleString()}</strong>`
+            : ""
+        }</p>
+        <p class="occ-links" id="occ-links">
           ${
-            features.length > PREVIEW
-              ? `<button type="button" class="linkish" id="occ-expand">View all ${features.length} occurrences in this result</button>`
-              : `<span class="sub">Showing all ${features.length} occurrence(s) returned.</span>`
+            canPageGbif
+              ? `<button type="button" class="linkish" id="occ-load-more">Load more GBIF</button>
+                 <button type="button" class="linkish" id="occ-load-all" hidden>Continue loading</button>
+                 <button type="button" class="linkish" id="occ-stop" hidden>Stop</button>`
+              : `<span class="sub">No further GBIF pages available via search API.</span>`
           }
           ${viewAllApi}
           ${browse}
@@ -373,6 +421,10 @@
           .join("")}</ul>`
       : `<p class="empty">No paleoclimate studies.</p>`;
 
+    const occSub = totalsLine
+      ? `${features.length} loaded · ${totalsLine}`
+      : `${features.length} GeoJSON feature(s)`;
+
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
       block(
@@ -384,7 +436,7 @@
       ),
       block("Name parse", `${parses.length} GNparser result(s)`, nameHtml),
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
-      block("Occurrences", `${features.length} GeoJSON feature(s)`, occHtml),
+      block("Occurrences", occSub, occHtml),
       block("Specimens", `${data.specimens?.voucher_count ?? 0} voucher(s)`, specimenHtml),
       block("3D media", data.media_3d?.has_3d_assets ? "MorphoSource hits" : "None", mediaHtml),
       block(
@@ -398,12 +450,167 @@
       block("Literature", `${literature.length} work(s)`, litHtml),
     ].join("");
 
-    const expandBtn = document.getElementById("occ-expand");
-    if (expandBtn) {
-      expandBtn.addEventListener("click", () => {
-        document.getElementById("occ-preview").hidden = true;
-        document.getElementById("occ-all").hidden = false;
-        expandBtn.hidden = true;
+    if (!opts.apiBase || !gbif) return;
+
+    paging.cancel = false;
+    paging.ctx = {
+      apiBase: opts.apiBase,
+      query: opts.query,
+      offset: gbif.offset,
+      total: gbif.total,
+      hasMore: gbif.hasMore,
+      loadedRows: features.length,
+      gbifLoaded: gbif.returned,
+    };
+
+    wireOccControls(Boolean(opts.loadAll));
+  }
+
+  function setOccButtons({ loadMore, loadAll, stop }) {
+    const moreBtn = document.getElementById("occ-load-more");
+    const allBtn = document.getElementById("occ-load-all");
+    const stopBtn = document.getElementById("occ-stop");
+    if (moreBtn) moreBtn.hidden = !loadMore;
+    if (allBtn) allBtn.hidden = !loadAll;
+    if (stopBtn) stopBtn.hidden = !stop;
+  }
+
+  function updateOccProgress(message) {
+    const el = document.getElementById("occ-progress");
+    if (el) el.innerHTML = message;
+  }
+
+  function wireOccControls(autoLoadAll) {
+    const moreBtn = document.getElementById("occ-load-more");
+    const allBtn = document.getElementById("occ-load-all");
+    const stopBtn = document.getElementById("occ-stop");
+
+    if (moreBtn) {
+      moreBtn.addEventListener("click", () => {
+        void runPaging({ continuous: false });
+      });
+    }
+    if (allBtn) {
+      allBtn.addEventListener("click", () => {
+        void runPaging({ continuous: true });
+      });
+    }
+    if (stopBtn) {
+      stopBtn.addEventListener("click", () => {
+        paging.cancel = true;
+      });
+    }
+
+    if (autoLoadAll && paging.ctx?.hasMore) {
+      void runPaging({ continuous: true });
+    }
+  }
+
+  async function fetchOccPage(ctx) {
+    const qs = new URLSearchParams();
+    qs.set("provider", "GBIF");
+    qs.set("offset", String(ctx.offset));
+    qs.set("limit", String(PAGE_SIZE));
+    const q = ctx.query || {};
+    if (q.taxon) qs.set("taxon", q.taxon);
+    if (q.lat) qs.set("lat", q.lat);
+    if (q.lng) qs.set("lng", q.lng);
+    if (q.radius) qs.set("radius_km", q.radius);
+    if (q.ageMin) qs.set("age_min", q.ageMin);
+    if (q.ageMax) qs.set("age_max", q.ageMax);
+
+    const resp = await fetch(`${ctx.apiBase}/api/v1/occurrences?${qs.toString()}`);
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok || body.status !== "success") {
+      throw new Error(formatApiError(body) || body.detail || `HTTP ${resp.status}`);
+    }
+    return body;
+  }
+
+  async function runPaging({ continuous }) {
+    if (!paging.ctx || paging.busy) return;
+    const ctx = paging.ctx;
+    if (!ctx.hasMore) return;
+
+    paging.busy = true;
+    paging.cancel = false;
+    setOccButtons({ loadMore: false, loadAll: false, stop: true });
+
+    const tbody = document.getElementById("occ-tbody");
+    try {
+      do {
+        if (paging.cancel) break;
+        if (ctx.loadedRows >= SOFT_CAP) {
+          updateOccProgress(
+            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> rows · GBIF loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
+              ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+            }. Continue to load more, or browse GBIF for the full catalog.`
+          );
+          setOccButtons({ loadMore: true, loadAll: true, stop: false });
+          paging.busy = false;
+          return;
+        }
+
+        updateOccProgress(
+          `Paging GBIF… loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
+            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+          }`
+        );
+
+        const page = await fetchOccPage(ctx);
+        const feats = page.features || [];
+        if (tbody && feats.length) {
+          tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
+        }
+        ctx.loadedRows += feats.length;
+        ctx.gbifLoaded += feats.length;
+        ctx.offset = page.next_offset != null ? page.next_offset : ctx.offset + feats.length;
+        ctx.total = page.total != null ? page.total : ctx.total;
+        ctx.hasMore = Boolean(page.has_more);
+
+        if (page.window_exhausted) {
+          updateOccProgress(
+            `Loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong> GBIF rows (search API window max 100,000). Catalog total <strong>${
+              ctx.total != null ? Number(ctx.total).toLocaleString() : "?"
+            }</strong> — use Browse all on GBIF for the rest.`
+          );
+          break;
+        }
+
+        if (!continuous) break;
+      } while (ctx.hasMore && !paging.cancel);
+
+      if (paging.cancel) {
+        updateOccProgress(
+          `Stopped. Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> rows · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
+            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+          }.`
+        );
+      } else if (!ctx.hasMore) {
+        updateOccProgress(
+          `Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> loaded occurrence(s) · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
+            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+          }${
+            ctx.total != null && ctx.gbifLoaded < ctx.total
+              ? " (remaining beyond search API — use browse link)"
+              : ""
+          }.`
+        );
+      } else {
+        updateOccProgress(
+          `Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> rows · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
+            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+          }.`
+        );
+      }
+    } catch (err) {
+      updateOccProgress(`Paging error: ${esc(err.message || err)}`);
+    } finally {
+      paging.busy = false;
+      setOccButtons({
+        loadMore: Boolean(ctx.hasMore),
+        loadAll: Boolean(ctx.hasMore),
+        stop: false,
       });
     }
   }

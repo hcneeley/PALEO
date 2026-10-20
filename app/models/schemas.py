@@ -117,6 +117,14 @@ class OccurrenceBrowseLink(BaseModel):
     url: str
 
 
+class OccurrenceSourceTotal(BaseModel):
+    """Per-provider returned vs upstream-available counts."""
+
+    provider: str
+    returned: int = 0
+    total: int | None = None
+
+
 class OccurrencesBlock(BaseModel):
     type: str = "FeatureCollection"
     total_records: int = 0
@@ -125,6 +133,7 @@ class OccurrencesBlock(BaseModel):
     view_all_url: str | None = None
     # Upstream portals for occurrences beyond UPAE's per-source limit
     browse_links: list[OccurrenceBrowseLink] = Field(default_factory=list)
+    source_totals: list[OccurrenceSourceTotal] = Field(default_factory=list)
 
 
 class SpecimenRecord(BaseModel):

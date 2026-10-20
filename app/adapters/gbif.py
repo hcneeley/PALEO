@@ -37,9 +37,21 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             data={"features": []},
         )
 
+    # GBIF search window: offset + limit must be ≤ 100_000; page size ≤ 300.
+    page = min(params.result_limit(), 300)
+    offset = params.result_offset()
+    if offset + page > 100_000:
+        page = max(0, 100_000 - offset)
+    if page <= 0:
+        return AdapterResult(
+            provider="GBIF",
+            status="ok",
+            data={"features": [], "total_count": None, "offset": offset, "end_of_records": True},
+        )
+
     q: dict = {
-        "limit": min(params.result_limit(), 100),
-        "offset": 0,
+        "limit": page,
+        "offset": offset,
         "hasCoordinate": "true",
     }
     if params.taxon:
@@ -87,11 +99,18 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             }
         )
 
+    total = payload.get("count")
+    end = bool(payload.get("endOfRecords")) or (offset + len(features) >= 100_000)
+    if isinstance(total, int) and offset + len(features) >= total:
+        end = True
+
     return AdapterResult(
         provider="GBIF",
         status="ok",
         data={
             "features": features,
-            "total_count": payload.get("count"),
+            "total_count": total,
+            "offset": offset,
+            "end_of_records": end,
         },
     )

@@ -195,8 +195,42 @@ button.ghost:hover {
   border-color: var(--muted);
 }
 
+.check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-field input {
+  width: auto;
+  margin-top: 0.2rem;
+  accent-color: var(--mint);
+}
+
 .hint {
   margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.occ-progress {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.occ-progress strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.occ-totals {
+  margin: 0 0 0.75rem;
   color: var(--muted);
   font-size: 0.85rem;
 }
