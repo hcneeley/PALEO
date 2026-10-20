@@ -12,6 +12,10 @@
   const clearBtn = document.getElementById("clear-btn");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
+  const sectionNav = document.getElementById("section-nav");
+  const sectionNavList = document.getElementById("section-nav-list");
+  /** @type {IntersectionObserver | null} */
+  let sectionObserver = null;
 
   /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
   const paging = { cancel: false, busy: false, ctx: null };
