@@ -38,6 +38,12 @@ def index() -> dict:
         "example": (
             "/api/v1/synthesize?taxon=Hadrosaurus&lat=34.55&lng=-78.45&radius_km=50"
         ),
-        "live_adapters": ["PBDB", "MACROSTRAT", "NEOTOMA", "IDIGBIO"],
-        "stub_adapters": ["MORPHOSOURCE", "GBIF", "PALEOCLIMATE", "CROSSREF"],
+        "live_adapters": [
+            "PBDB",
+            "MACROSTRAT",
+            "NEOTOMA",
+            "IDIGBIO",
+            "MORPHOSOURCE",
+        ],
+        "stub_adapters": ["GBIF", "PALEOCLIMATE", "CROSSREF"],
     }

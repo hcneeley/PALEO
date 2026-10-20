@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, and iDigBio; stubs for MorphoSource, GBIF, PaleoDAP, and CrossRef; in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, and MorphoSource; stubs for GBIF, PaleoDAP, and CrossRef; in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -38,10 +38,15 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **Macrostrat** | Stratigraphic units at lat/lng |
 | **Neotoma** | Quaternary paleoecology occurrences |
 | **iDigBio** | Museum specimen vouchers |
+| **MorphoSource** | 3D / CT media (`/api/media`) → `media_3d` |
+
+### MorphoSource
+
+Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&search_field=all_fields`. Records map MorphoSource media fields (id, title, media type, modality, device facility, physical object id/title/organization/type/taxonomy, descriptions, element/part, DOI, ARK, dates) into `media_3d.records`.
 
 ## Stubs (MVP)
 
-MorphoSource, GBIF, PaleoDAP / paleoclimate, CrossRef return empty collections with `status: stub` in diagnostics.
+GBIF, PaleoDAP / paleoclimate, and CrossRef return empty collections with `status: stub` in diagnostics.
 
 ## Tests
 

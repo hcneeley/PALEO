@@ -53,10 +53,11 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     )
 
     media_raw = (results["MORPHOSOURCE"].data or {}).get("records") or []
+    ms_status = results["MORPHOSOURCE"].status
     media = Media3dBlock(
         has_3d_assets=bool(media_raw),
         records=[Media3dRecord.model_validate(r) for r in media_raw],
-        status=results["MORPHOSOURCE"].status if results["MORPHOSOURCE"].status != "ok" else None,
+        status=None if ms_status == "ok" else ms_status,
     )
 
     climate_raw = (results["PALEOCLIMATE"].data or {}).get("proxy") or {}

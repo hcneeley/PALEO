@@ -94,6 +94,21 @@ class Media3dRecord(BaseModel):
     provider: str
     media_id: str | None = None
     title: str | None = None
+    media_type: str | None = None
+    modality: str | None = None
+    device_facility: str | None = None
+    physical_object_id: str | None = None
+    physical_object_title: str | None = None
+    physical_object_organization: str | None = None
+    physical_object_type: str | None = None
+    physical_object_taxonomy: str | None = None
+    short_description: str | None = None
+    description: str | None = None
+    element_part: str | None = None
+    doi: str | None = None
+    ark: str | None = None
+    date_upload: str | None = None
+    date_modified: str | None = None
     url: str | None = None
 
 

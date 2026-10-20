@@ -15,6 +15,7 @@ MACRO_URL = "https://macrostrat.org/api/v2/units"
 NEOTOMA_TAXA = "https://api.neotomadb.org/v2.0/data/taxa"
 NEOTOMA_OCC = "https://api.neotomadb.org/v2.0/data/occurrences"
 IDIG_URL = "https://search.idigbio.org/v2/search/records"
+MS_URL = "https://www.morphosource.org/api/media"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
@@ -90,6 +91,33 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(MS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "response": {
+                    "media": [
+                        {
+                            "id": ["000852930"],
+                            "title": ["Jaw [CTImageSeries] [CT]"],
+                            "media_type": ["Volumetric Image Series"],
+                            "modality": ["MicroNanoXRayComputedTomography"],
+                            "device_facility": ["AMNH Microscopy and Imaging Facility (MIF)"],
+                            "physical_object_id": ["000852927"],
+                            "physical_object_title": ["pss-mae:MAE:19-46"],
+                            "physical_object_organization": ["AMNH"],
+                            "physical_object_type": ["Biological Specimen"],
+                            "physical_object_taxonomy_name": ["Hadrosaurus sp"],
+                            "part": ["Jaw"],
+                            "doi": [],
+                            "ark": [],
+                        }
+                    ],
+                    "pages": {"total_count": 1},
+                }
+            },
+        )
+    )
 
 
 @respx.mock
@@ -109,7 +137,10 @@ def test_synthesize_happy_path(client):
     assert body["specimens"]["voucher_count"] == 1
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
-    assert providers["MORPHOSOURCE"] == "stub"
+    assert providers["MORPHOSOURCE"] == "ok"
+    assert body["media_3d"]["has_3d_assets"] is True
+    assert body["media_3d"]["records"][0]["media_id"] == "000852930"
+    assert body["media_3d"]["records"][0]["physical_object_taxonomy"] == "Hadrosaurus sp"
     assert providers["GBIF"] == "stub"
 
 
@@ -121,6 +152,9 @@ def test_adapter_failure_still_200(client):
     )
     respx.get(NEOTOMA_TAXA).mock(return_value=httpx.Response(200, json={"data": []}))
     respx.get(IDIG_URL).mock(return_value=httpx.Response(200, json={"items": []}))
+    respx.get(MS_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"media": [], "pages": {}}})
+    )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})
     assert r.status_code == 200
