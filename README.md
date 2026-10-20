@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, and NOAA NCEI Paleo Search; stub for CrossRef; in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, and Crossref; in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -41,6 +41,11 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **MorphoSource** | 3D / CT media (`/api/media`) → `media_3d` |
 | **GBIF** | Extant occurrence search → GeoJSON features |
 | **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
+| **Crossref** | Bibliographic works → `literature` |
+
+### Crossref
+
+Uses [`GET https://api.crossref.org/works`](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) with `query=<taxon>` and `filter=type:journal-article`. Set `CROSSREF_MAILTO` for the [polite pool](https://www.crossref.org/documentation/retrieve-metadata/rest-api/). Results map DOI, title, authors, year, container title, and URL into `literature`.
 
 ### NCEI Paleo Search (NOAA)
 
@@ -53,10 +58,6 @@ Uses the Occurrence Search API (`GET https://api.gbif.org/v1/occurrence/search`)
 ### MorphoSource
 
 Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&search_field=all_fields`. Records map MorphoSource media fields (id, title, media type, modality, device facility, physical object id/title/organization/type/taxonomy, descriptions, element/part, DOI, ARK, dates) into `media_3d.records`.
-
-## Stubs (MVP)
-
-CrossRef returns an empty literature list with `status: stub` in diagnostics.
 
 ## Tests
 
@@ -87,8 +88,7 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 ## Roadmap (post-MVP)
 
 - Redis cache + PostGIS spatial helpers
-- Wire CrossRef bibliographic linkage
-- Taxonomic synonym resolution + bibliographic DOI linkage
+- Taxonomic synonym resolution / deeper DOI linkage across adapters
 - Docker Compose
 
 ## Upstream docs
@@ -100,4 +100,5 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 - [MorphoSource API](https://github.com/MorphoSource/morphosource-api)
 - [GBIF OpenAPI](https://techdocs.gbif.org/en/openapi/)
 - [NCEI Paleo Search API](https://www.ncei.noaa.gov/access/paleo-search/api)
+- [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)

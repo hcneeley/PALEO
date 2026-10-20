@@ -139,6 +139,9 @@ class LiteratureRecord(BaseModel):
     title: str | None = None
     authors: list[str] = Field(default_factory=list)
     year: int | None = None
+    container_title: str | None = None
+    type: str | None = None
+    url: str | None = None
 
 
 class AdapterDiagnostic(BaseModel):

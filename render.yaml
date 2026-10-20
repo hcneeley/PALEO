@@ -22,3 +22,5 @@ services:
         value: "86400"
       - key: OCCURRENCE_LIMIT
         value: "50"
+      - key: CROSSREF_MAILTO
+        sync: false

@@ -18,6 +18,7 @@ from ..models.schemas import (
     Coordinates,
     GeologyBlock,
     GtsNormalizedAge,
+    LiteratureRecord,
     MacrostratUnit,
     Media3dBlock,
     Media3dRecord,
@@ -63,7 +64,8 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     climate_raw = (results["PALEOCLIMATE"].data or {}).get("proxy") or {}
     paleoclimate = PaleoclimateProxy.model_validate(climate_raw)
 
-    literature = (results["CROSSREF"].data or {}).get("literature") or []
+    literature_raw = (results["CROSSREF"].data or {}).get("literature") or []
+    literature = [LiteratureRecord.model_validate(x) for x in literature_raw]
 
     gts = normalize_age_bounds(params.age_min, params.age_max)
     body = SynthesizeResponse(

@@ -18,6 +18,7 @@ IDIG_URL = "https://search.idigbio.org/v2/search/records"
 MS_URL = "https://www.morphosource.org/api/media"
 GBIF_URL = "https://api.gbif.org/v1/occurrence/search"
 NOAA_URL = "https://www.ncei.noaa.gov/access/paleo-search/study/search.json"
+CROSSREF_URL = "https://api.crossref.org/works"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
@@ -169,6 +170,28 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(CROSSREF_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "status": "ok",
+                "message": {
+                    "total-results": 1,
+                    "items": [
+                        {
+                            "DOI": "10.1234/example",
+                            "title": ["Dire wolves and <i>Canis dirus</i>"],
+                            "author": [{"given": "Jane", "family": "Doe"}],
+                            "published-print": {"date-parts": [[2020, 1, 1]]},
+                            "container-title": ["Journal of Example"],
+                            "type": "journal-article",
+                            "URL": "https://doi.org/10.1234/example",
+                        }
+                    ],
+                },
+            },
+        )
+    )
 
 
 @respx.mock
@@ -201,6 +224,11 @@ def test_synthesize_happy_path(client):
     assert body["paleoclimate_proxy"]["study_count"] == 1
     assert body["paleoclimate_proxy"]["studies"][0]["study_id"] == "9101"
     assert body["paleoclimate_proxy"]["model_source"] == "NCEI Paleo Search (NOAA)"
+    assert providers["CROSSREF"] == "ok"
+    assert len(body["literature"]) == 1
+    assert body["literature"][0]["doi"] == "10.1234/example"
+    assert "Canis dirus" in body["literature"][0]["title"]
+    assert body["literature"][0]["authors"] == ["Jane Doe"]
 
 
 @respx.mock
@@ -219,6 +247,11 @@ def test_adapter_failure_still_200(client):
     )
     respx.get(NOAA_URL).mock(
         return_value=httpx.Response(200, json={"study": [], "page": []})
+    )
+    respx.get(CROSSREF_URL).mock(
+        return_value=httpx.Response(
+            200, json={"status": "ok", "message": {"total-results": 0, "items": []}}
+        )
     )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})
