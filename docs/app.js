@@ -204,22 +204,48 @@
     </tr>`;
   }
 
-  function formatTotals(sourceTotals) {
-    if (!sourceTotals?.length) return "";
-    return sourceTotals
-      .map((s) => {
-        const total = s.total != null ? Number(s.total).toLocaleString() : "?";
-        return `${esc(s.provider)} ${esc(s.returned)} of ${esc(total)}`;
-      })
+  function formatTotals(sourceTotals, features) {
+    if (sourceTotals?.length) {
+      return sourceTotals
+        .map((s) => {
+          const total = s.total != null ? Number(s.total).toLocaleString() : "?";
+          return `${esc(s.provider)} ${esc(s.returned)} of ${esc(total)}`;
+        })
+        .join(" · ");
+    }
+    const counts = {};
+    for (const f of features || []) {
+      const src = (f.properties || {}).database_source || "Unknown";
+      counts[src] = (counts[src] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([src, n]) => `${esc(src)} ${esc(n)}`)
       .join(" · ");
   }
 
-  function gbifStateFromTotals(sourceTotals) {
-    const gbif = (sourceTotals || []).find((s) => s.provider === "GBIF");
-    if (!gbif) return null;
-    const returned = Number(gbif.returned) || 0;
-    const total = gbif.total != null ? Number(gbif.total) : null;
-    const hasMore = total == null ? returned > 0 : returned < total;
+  function countGbifFeatures(features) {
+    return (features || []).filter((f) => (f.properties || {}).database_source === "GBIF").length;
+  }
+
+  function resolveGbifState(features, sourceTotals, pageLimit) {
+    const hasSourceTotals = Array.isArray(sourceTotals) && sourceTotals.length > 0;
+    const fromApi = hasSourceTotals
+      ? sourceTotals.find((s) => s.provider === "GBIF")
+      : null;
+    const returned = fromApi
+      ? Number(fromApi.returned) || 0
+      : countGbifFeatures(features);
+    const total = fromApi && fromApi.total != null ? Number(fromApi.total) : null;
+    let hasMore;
+    if (total != null && Number.isFinite(total)) {
+      hasMore = returned < total;
+    } else if (!hasSourceTotals) {
+      // Old synthesize payload without source_totals — offer paging and let GBIF decide.
+      hasMore = returned > 0;
+    } else {
+      // Totals present but GBIF count missing: more likely if this page was full.
+      hasMore = returned > 0 && returned >= pageLimit;
+    }
     return { returned, total, hasMore, offset: returned };
   }
 
@@ -237,7 +263,7 @@
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
     const sourceTotals = data.occurrences?.source_totals || [];
     const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
-    const gbif = gbifStateFromTotals(sourceTotals);
+    const gbif = resolveGbifState(features, sourceTotals, show);
 
     const nameHtml = parses.length
       ? `<ul class="list">${parses
@@ -309,9 +335,15 @@
     const viewAllApi = data.occurrences?.view_all_url
       ? `<a class="occ-link" href="${esc(data.occurrences.view_all_url)}" target="_blank" rel="noopener">Full JSON response</a>`
       : "";
-    const totalsLine = formatTotals(sourceTotals);
+    const totalsLine = formatTotals(sourceTotals, features);
+    const canPageGbif = Boolean(gbif.hasMore);
+    const noMoreMsg =
+      gbif.returned === 0
+        ? `<span class="sub">No GBIF occurrences in this result to page.</span>`
+        : `<span class="sub">No further GBIF pages for this query (loaded ${gbif.returned}${
+            gbif.total != null ? ` of ${Number(gbif.total).toLocaleString()}` : ""
+          }).</span>`;
 
-    const canPageGbif = Boolean(gbif && gbif.hasMore);
     const occHtml = features.length
       ? `${
           totalsLine ? `<p class="occ-totals">${totalsLine}</p>` : ""
@@ -320,9 +352,11 @@
           <tbody id="occ-tbody">${features.map(occRowHtml).join("")}</tbody>
         </table></div>
         <p class="occ-progress" id="occ-progress">Showing <strong>${features.length}</strong> loaded occurrence(s)${
-          gbif?.total != null
+          gbif.total != null
             ? ` · GBIF catalog <strong>${Number(gbif.total).toLocaleString()}</strong>`
-            : ""
+            : gbif.returned
+              ? ` · GBIF in page <strong>${gbif.returned}</strong>`
+              : ""
         }</p>
         <p class="occ-links" id="occ-links">
           ${
@@ -330,7 +364,7 @@
               ? `<button type="button" class="linkish" id="occ-load-more">Load more GBIF</button>
                  <button type="button" class="linkish" id="occ-load-all" hidden>Continue loading</button>
                  <button type="button" class="linkish" id="occ-stop" hidden>Stop</button>`
-              : `<span class="sub">No further GBIF pages available via search API.</span>`
+              : noMoreMsg
           }
           ${viewAllApi}
           ${browse}
@@ -450,7 +484,7 @@
       block("Literature", `${literature.length} work(s)`, litHtml),
     ].join("");
 
-    if (!opts.apiBase || !gbif) return;
+    if (!opts.apiBase) return;
 
     paging.cancel = false;
     paging.ctx = {
@@ -463,7 +497,7 @@
       gbifLoaded: gbif.returned,
     };
 
-    wireOccControls(Boolean(opts.loadAll));
+    wireOccControls(Boolean(opts.loadAll) && gbif.hasMore);
   }
 
   function setOccButtons({ loadMore, loadAll, stop }) {
@@ -506,6 +540,67 @@
     }
   }
 
+  function mapGbifRecord(rec) {
+    const lat = rec.decimalLatitude;
+    const lng = rec.decimalLongitude;
+    const key = rec.key;
+    return {
+      type: "Feature",
+      geometry:
+        lat != null && lng != null
+          ? { type: "Point", coordinates: [lng, lat] }
+          : null,
+      properties: {
+        occurrence_id: key != null ? `gbif:occ:${key}` : null,
+        database_source: "GBIF",
+        taxon_name: rec.scientificName || rec.species,
+        accepted_name: rec.acceptedScientificName || rec.scientificName,
+        dwc_eventDate: rec.eventDate || (rec.year != null ? String(rec.year) : null),
+        max_ma: null,
+        min_ma: null,
+        basis_of_record: rec.basisOfRecord,
+        country: rec.country,
+        dataset_key: rec.datasetKey,
+        gbif_url: key != null ? `https://www.gbif.org/occurrence/${key}` : null,
+      },
+    };
+  }
+
+  async function fetchGbifDirect(ctx) {
+    const q = ctx.query || {};
+    const qs = new URLSearchParams();
+    qs.set("limit", String(PAGE_SIZE));
+    qs.set("offset", String(ctx.offset));
+    qs.set("hasCoordinate", "true");
+    if (q.taxon) qs.set("scientificName", q.taxon);
+    if (q.lat && q.lng) {
+      const r = q.radius || "10";
+      qs.set("geoDistance", `${q.lat},${q.lng},${r}km`);
+    }
+    const resp = await fetch(`https://api.gbif.org/v1/occurrence/search?${qs.toString()}`);
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(payload.message || `GBIF HTTP ${resp.status}`);
+    }
+    const features = (payload.results || []).map(mapGbifRecord);
+    const total = payload.count != null ? Number(payload.count) : null;
+    const nextOffset = ctx.offset + features.length;
+    const end = Boolean(payload.endOfRecords) || (total != null && nextOffset >= total);
+    const windowHit = nextOffset >= 100000;
+    const hasMore = !end && features.length > 0 && !windowHit && (total == null || nextOffset < total);
+    return {
+      status: "success",
+      provider: "GBIF",
+      features,
+      returned: features.length,
+      total,
+      offset: ctx.offset,
+      next_offset: hasMore ? nextOffset : null,
+      has_more: hasMore,
+      window_exhausted: windowHit && total != null && total > 100000,
+    };
+  }
+
   async function fetchOccPage(ctx) {
     const qs = new URLSearchParams();
     qs.set("provider", "GBIF");
@@ -520,6 +615,10 @@
     if (q.ageMax) qs.set("age_max", q.ageMax);
 
     const resp = await fetch(`${ctx.apiBase}/api/v1/occurrences?${qs.toString()}`);
+    if (resp.status === 404) {
+      // Render may still be on a build without /occurrences — page GBIF directly.
+      return fetchGbifDirect(ctx);
+    }
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok || body.status !== "success") {
       throw new Error(formatApiError(body) || body.detail || `HTTP ${resp.status}`);
