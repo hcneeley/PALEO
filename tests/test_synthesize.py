@@ -16,6 +16,7 @@ NEOTOMA_TAXA = "https://api.neotomadb.org/v2.0/data/taxa"
 NEOTOMA_OCC = "https://api.neotomadb.org/v2.0/data/occurrences"
 IDIG_URL = "https://search.idigbio.org/v2/search/records"
 MS_URL = "https://www.morphosource.org/api/media"
+GBIF_URL = "https://api.gbif.org/v1/occurrence/search"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
@@ -118,6 +119,27 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(GBIF_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "results": [
+                    {
+                        "key": 111,
+                        "scientificName": "Hadrosaurus foulkii",
+                        "acceptedScientificName": "Hadrosaurus foulkii",
+                        "decimalLatitude": 34.55,
+                        "decimalLongitude": -78.45,
+                        "eventDate": "2020-01-01",
+                        "basisOfRecord": "PRESERVED_SPECIMEN",
+                        "country": "United States of America",
+                        "datasetKey": "abc",
+                    }
+                ],
+            },
+        )
+    )
 
 
 @respx.mock
@@ -141,7 +163,11 @@ def test_synthesize_happy_path(client):
     assert body["media_3d"]["has_3d_assets"] is True
     assert body["media_3d"]["records"][0]["media_id"] == "000852930"
     assert body["media_3d"]["records"][0]["physical_object_taxonomy"] == "Hadrosaurus sp"
-    assert providers["GBIF"] == "stub"
+    assert providers["GBIF"] == "ok"
+    assert any(
+        f["properties"]["database_source"] == "GBIF"
+        for f in body["occurrences"]["features"]
+    )
 
 
 @respx.mock
@@ -154,6 +180,9 @@ def test_adapter_failure_still_200(client):
     respx.get(IDIG_URL).mock(return_value=httpx.Response(200, json={"items": []}))
     respx.get(MS_URL).mock(
         return_value=httpx.Response(200, json={"response": {"media": [], "pages": {}}})
+    )
+    respx.get(GBIF_URL).mock(
+        return_value=httpx.Response(200, json={"count": 0, "results": []})
     )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})
