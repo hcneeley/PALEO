@@ -105,18 +105,15 @@
             />
           </label>
           <label class="field">
-            <span>Results per source</span>
-            <input
-              id="limit"
-              name="limit"
-              type="number"
-              step="1"
-              min="1"
-              max="300"
-              value="50"
-              placeholder="1–300"
-              autocomplete="off"
-            />
+            <span>Display per source</span>
+            <select id="limit" name="limit" autocomplete="off">
+              <option value="10">10 at once</option>
+              <option value="25">25 at once</option>
+              <option value="50" selected>50 at once</option>
+              <option value="100">100 at once</option>
+              <option value="200">200 at once</option>
+              <option value="300">300 at once</option>
+            </select>
           </label>
         </div>
         <label class="check-field">

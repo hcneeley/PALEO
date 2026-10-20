@@ -136,7 +136,8 @@ body {
   grid-template-columns: repeat(3, 1fr);
 }
 
-input {
+input,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -148,13 +149,33 @@ input {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.15rem) 50%,
+    calc(100% - 0.75rem) 50%;
+  background-size: 0.4rem 0.4rem, 0.4rem 0.4rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  padding-right: 2.25rem;
+}
+
+select option {
+  background: var(--bg1);
+  color: var(--ink);
+}
+
 input::placeholder {
   color: rgba(154, 175, 163, 0.55);
   font-style: italic;
   opacity: 1;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: var(--mint);
   box-shadow: 0 0 0 3px rgba(111, 191, 166, 0.15);
 }

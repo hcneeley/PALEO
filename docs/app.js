@@ -102,8 +102,9 @@
       hint.classList.add("error");
       return;
     }
-    if (!Number.isFinite(limit) || limit < 1 || limit > MAX_LIMIT || !Number.isInteger(limit)) {
-      hint.textContent = `Results per source must be a whole number from 1 to ${MAX_LIMIT}.`;
+    const allowedLimits = new Set([10, 25, 50, 100, 200, 300]);
+    if (!allowedLimits.has(limit)) {
+      hint.textContent = "Choose how many to display from the dropdown.";
       hint.classList.add("error");
       return;
     }
