@@ -47,6 +47,8 @@ def index() -> dict:
             "GBIF",
             "PALEOCLIMATE",
             "CROSSREF",
+            "MINDAT",
         ],
         "stub_adapters": [],
+        "mindat_note": "Requires MINDAT_API_KEY (env, key.env, or Render secret file)",
     }

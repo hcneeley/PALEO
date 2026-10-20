@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, and Crossref; in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, Crossref, and Mindat (key required); in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -42,6 +42,11 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **GBIF** | Extant occurrence search → GeoJSON features |
 | **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
 | **Crossref** | Bibliographic works → `literature` |
+| **Mindat** | Minerals / geomaterials + localities → `minerals` (needs API key) |
+
+### Mindat
+
+Uses OpenMindat [`geomaterials-search`](https://api.mindat.org/v1/schema/redoc/) with `q=<taxon>` (mineral name) and optional localities for the top hit. Requires `MINDAT_API_KEY` (or a Render secret file named `MINDAT_API_KEY`). Without a key, the adapter reports `skipped` and leaves `minerals` empty.
 
 ### Crossref
 
@@ -75,7 +80,7 @@ Repo is Render-ready (`render.yaml` + `Procfile`). This does **not** create a Re
    - **Build:** `pip install -r requirements.txt`
    - **Start:** `gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
    - **Health check:** `/api/v1/`
-4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`.
+4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`, `CROSSREF_MAILTO`, `MINDAT_API_KEY` (or mount as a Secret File).
 
 Free tier: the service may sleep when idle; the first request after a pause can take ~30–60 seconds. Synthesize fans out to several upstream APIs, so cold starts plus a full query can feel slow.
 
@@ -101,4 +106,5 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 - [GBIF OpenAPI](https://techdocs.gbif.org/en/openapi/)
 - [NCEI Paleo Search API](https://www.ncei.noaa.gov/access/paleo-search/api)
 - [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
+- [OpenMindat API](https://api.mindat.org/v1/schema/redoc/) · [Get a Mindat API key](https://www.mindat.org/a/how_to_get_my_mindat_api_key)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)

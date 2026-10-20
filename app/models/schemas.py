@@ -144,6 +144,37 @@ class LiteratureRecord(BaseModel):
     url: str | None = None
 
 
+class MineralRecord(BaseModel):
+    provider: str = "Mindat"
+    mineral_id: str | None = None
+    name: str | None = None
+    formula: str | None = None
+    ima_status: Any = None
+    crystal_system: str | None = None
+    hardness_min: float | None = None
+    hardness_max: float | None = None
+    url: str | None = None
+
+
+class MineralLocality(BaseModel):
+    provider: str = "Mindat"
+    locality_id: str | None = None
+    name: str | None = None
+    country: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    mineral: str | None = None
+    url: str | None = None
+
+
+class MineralsBlock(BaseModel):
+    mineral_count: int = 0
+    locality_count: int = 0
+    minerals: list[MineralRecord] = Field(default_factory=list)
+    localities: list[MineralLocality] = Field(default_factory=list)
+    status: str | None = None
+
+
 class AdapterDiagnostic(BaseModel):
     provider: str
     status: str
@@ -162,6 +193,7 @@ class SynthesizeResponse(BaseModel):
     occurrences: OccurrencesBlock
     specimens: SpecimensBlock
     media_3d: Media3dBlock
+    minerals: MineralsBlock = Field(default_factory=MineralsBlock)
     literature: list[LiteratureRecord] = Field(default_factory=list)
     diagnostics: list[AdapterDiagnostic] = Field(default_factory=list)
     extras: dict[str, Any] = Field(default_factory=dict)

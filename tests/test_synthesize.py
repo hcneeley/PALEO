@@ -19,6 +19,9 @@ MS_URL = "https://www.morphosource.org/api/media"
 GBIF_URL = "https://api.gbif.org/v1/occurrence/search"
 NOAA_URL = "https://www.ncei.noaa.gov/access/paleo-search/study/search.json"
 CROSSREF_URL = "https://api.crossref.org/works"
+MINDAT_SEARCH = "https://api.mindat.org/v1/geomaterials-search/"
+MINDAT_DETAIL = "https://api.mindat.org/v1/geomaterials/1/"
+MINDAT_LOCS = "https://api.mindat.org/v1/localities/"
 
 
 def _mock_live_upstreams(router: respx.MockRouter) -> None:
@@ -192,10 +195,51 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(MINDAT_SEARCH).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 1,
+                        "name": "Quartz",
+                        "mindat_formula": "SiO2",
+                        "csystem": "Hexagonal",
+                        "hmin": 7,
+                        "hmax": 7,
+                        "ima_status": ["APPROVED"],
+                    }
+                ]
+            },
+        )
+    )
+    router.get(url__regex=r"https://api\.mindat\.org/v1/geomaterials/\d+/").mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 1, "name": "Quartz", "locality": [10, 11]},
+        )
+    )
+    router.get(MINDAT_LOCS).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 10,
+                        "txt": "Sample locality",
+                        "latitude": 34.5,
+                        "longitude": -78.4,
+                        "country": "USA",
+                    }
+                ]
+            },
+        )
+    )
 
 
 @respx.mock
-def test_synthesize_happy_path(client):
+def test_synthesize_happy_path(client, monkeypatch):
+    monkeypatch.setenv("MINDAT_API_KEY", "test-token")
     _mock_live_upstreams(respx)
     r = client.get(
         "/api/v1/synthesize",
@@ -229,10 +273,15 @@ def test_synthesize_happy_path(client):
     assert body["literature"][0]["doi"] == "10.1234/example"
     assert "Canis dirus" in body["literature"][0]["title"]
     assert body["literature"][0]["authors"] == ["Jane Doe"]
+    assert providers["MINDAT"] == "ok"
+    assert body["minerals"]["mineral_count"] == 1
+    assert body["minerals"]["minerals"][0]["name"] == "Quartz"
+    assert body["minerals"]["locality_count"] == 1
 
 
 @respx.mock
-def test_adapter_failure_still_200(client):
+def test_adapter_failure_still_200(client, monkeypatch):
+    monkeypatch.setenv("MINDAT_API_KEY", "test-token")
     respx.get(PBDB_URL).mock(return_value=httpx.Response(500, text="boom"))
     respx.get(MACRO_URL).mock(
         return_value=httpx.Response(200, json={"success": {"data": []}})
@@ -253,6 +302,9 @@ def test_adapter_failure_still_200(client):
             200, json={"status": "ok", "message": {"total-results": 0, "items": []}}
         )
     )
+    respx.get(MINDAT_SEARCH).mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})
     assert r.status_code == 200
@@ -264,7 +316,8 @@ def test_adapter_failure_still_200(client):
 
 
 @respx.mock
-def test_cache_hit(client):
+def test_cache_hit(client, monkeypatch):
+    monkeypatch.setenv("MINDAT_API_KEY", "test-token")
     _mock_live_upstreams(respx)
     params = {"taxon": "Hadrosaurus", "lat": 34.55, "lng": -78.45}
     r1 = client.get("/api/v1/synthesize", params=params)

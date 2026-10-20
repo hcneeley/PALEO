@@ -41,6 +41,10 @@ class AdapterResult:
             count = len(self.data.get("studies") or [])
         elif "literature" in self.data:
             count = len(self.data.get("literature") or [])
+        elif "minerals" in self.data:
+            count = len(self.data.get("minerals") or []) + len(
+                self.data.get("localities") or []
+            )
         elif isinstance(self.data.get("proxy"), dict):
             count = int((self.data["proxy"] or {}).get("study_count") or 0)
         return AdapterDiagnostic(

@@ -22,6 +22,9 @@ from ..models.schemas import (
     MacrostratUnit,
     Media3dBlock,
     Media3dRecord,
+    MineralLocality,
+    MineralRecord,
+    MineralsBlock,
     OccurrenceFeature,
     OccurrencesBlock,
     PaleoclimateProxy,
@@ -67,6 +70,18 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     literature_raw = (results["CROSSREF"].data or {}).get("literature") or []
     literature = [LiteratureRecord.model_validate(x) for x in literature_raw]
 
+    mindat = results.get("MINDAT")
+    minerals_raw = (mindat.data or {}).get("minerals") or [] if mindat else []
+    localities_raw = (mindat.data or {}).get("localities") or [] if mindat else []
+    mindat_status = mindat.status if mindat else "skipped"
+    minerals_block = MineralsBlock(
+        mineral_count=len(minerals_raw),
+        locality_count=len(localities_raw),
+        minerals=[MineralRecord.model_validate(x) for x in minerals_raw],
+        localities=[MineralLocality.model_validate(x) for x in localities_raw],
+        status=None if mindat_status == "ok" else mindat_status,
+    )
+
     gts = normalize_age_bounds(params.age_min, params.age_max)
     body = SynthesizeResponse(
         status="success",
@@ -91,6 +106,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         ),
         specimens=specimens,
         media_3d=media,
+        minerals=minerals_block,
         literature=literature,
         diagnostics=diagnostics,
     )
@@ -103,7 +119,9 @@ async def synthesize(
     lat: float | None = Query(None, description="Latitude (decimal degrees)"),
     lng: float | None = Query(None, description="Longitude (decimal degrees)"),
     radius_km: float | None = Query(None, description="Search radius in km"),
-    taxon: str | None = Query(None, description="Clade, genus, or species"),
+    taxon: str | None = Query(
+        None, description="Clade, genus, species, or mineral/geomaterial name"
+    ),
     age_min: float | None = Query(None, description="Younger age bound (Ma)"),
     age_max: float | None = Query(None, description="Older age bound (Ma)"),
 ) -> dict:
@@ -149,6 +167,7 @@ async def synthesize(
         ("GBIF", adapters.gbif.fetch_and_parse),
         ("PALEOCLIMATE", adapters.paleoclimate.fetch_and_parse),
         ("CROSSREF", adapters.crossref.fetch_and_parse),
+        ("MINDAT", adapters.mindat.fetch_and_parse),
     ]
     gathered = await asyncio.gather(
         *[run_adapter(name, partial(fn, params)) for name, fn in names]

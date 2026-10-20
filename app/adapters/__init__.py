@@ -5,6 +5,7 @@ from . import (
     gbif,
     idigbio,
     macrostrat,
+    mindat,
     morphosource,
     neotoma,
     paleoclimate,
@@ -20,4 +21,5 @@ __all__ = [
     "gbif",
     "paleoclimate",
     "crossref",
+    "mindat",
 ]
