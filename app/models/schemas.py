@@ -229,6 +229,36 @@ class AdapterDiagnostic(BaseModel):
     elapsed_ms: OptFloat = None
 
 
+
+class NameParseRecord(BaseModel):
+    provider: str = "GNparser"
+    parsed: bool = False
+    quality: OptInt = None
+    verbatim: str | None = None
+    normalized: str | None = None
+    canonical_simple: str | None = None
+    canonical_full: str | None = None
+    canonical_stemmed: str | None = None
+    cardinality: OptInt = None
+    rank: str | None = None
+    genus: str | None = None
+    species: str | None = None
+    infraspecies: str | None = None
+    authorship_verbatim: str | None = None
+    authorship_normalized: str | None = None
+    authorship_year: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    name_id: str | None = None
+    parser_version: str | None = None
+    url: str | None = None
+
+
+class NameParseBlock(BaseModel):
+    parse_count: int = 0
+    parses: list[NameParseRecord] = Field(default_factory=list)
+    status: str | None = None
+
+
 class SynthesizeResponse(BaseModel):
     status: str = "success"
     execution_time_ms: float
@@ -240,6 +270,7 @@ class SynthesizeResponse(BaseModel):
     specimens: SpecimensBlock
     media_3d: Media3dBlock
     minerals: MineralsBlock = Field(default_factory=MineralsBlock)
+    name_parse: NameParseBlock = Field(default_factory=NameParseBlock)
     literature: list[LiteratureRecord] = Field(default_factory=list)
     diagnostics: list[AdapterDiagnostic] = Field(default_factory=list)
     extras: dict[str, Any] = Field(default_factory=dict)

@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB (incl. paleocoordinates), Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, Crossref, OpenAlex, and Mindat (key required); in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB (incl. paleocoordinates), Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, Crossref, OpenAlex, Mindat, and GNparser (key required); in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -43,7 +43,12 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
 | **Crossref** | Bibliographic works → `literature` |
 | **OpenAlex** | Relevance-ranked works → `literature` (merged with Crossref, DOI-deduped) |
+| **GNparser** | Global Names Parser — canonical taxon parse → `name_parse` |
 | **Mindat** | Minerals / geomaterials + localities → `minerals` (needs API key) |
+
+### GNparser (Global Names Parser)
+
+Uses [`https://parser.globalnames.org/api/v1/`](https://parser.globalnames.org/doc/api) to parse `taxon` into canonical form, rank, genus/species, and authorship. Part of the [Global Names](https://globalnames.org/) stack (see also [ZooBank via GNA apps](https://globalnames.org/apps/zoobank/)). Results appear under `name_parse`.
 
 ### Mindat
 
@@ -107,5 +112,6 @@ pytest -q
 - [NCEI Paleo Search API](https://www.ncei.noaa.gov/access/paleo-search/api)
 - [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
 - [OpenAlex works search](https://docs.openalex.org/api-entities/works/search-works)
+- [GNparser API](https://parser.globalnames.org/doc/api) · [Global Names / ZooBank apps](https://globalnames.org/apps/zoobank/)
 - [OpenMindat API](https://api.mindat.org/v1/schema/redoc/) · [Get a Mindat API key](https://www.mindat.org/a/how_to_get_my_mindat_api_key)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)

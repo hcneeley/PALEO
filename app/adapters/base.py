@@ -41,6 +41,8 @@ class AdapterResult:
             count = len(self.data.get("studies") or [])
         elif "literature" in self.data:
             count = len(self.data.get("literature") or [])
+        elif "parses" in self.data:
+            count = len(self.data.get("parses") or [])
         elif "minerals" in self.data:
             count = len(self.data.get("minerals") or []) + len(
                 self.data.get("localities") or []

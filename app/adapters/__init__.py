@@ -3,6 +3,7 @@
 from . import (
     crossref,
     gbif,
+    gnparser,
     idigbio,
     macrostrat,
     mindat,
@@ -20,6 +21,7 @@ __all__ = [
     "idigbio",
     "morphosource",
     "gbif",
+    "gnparser",
     "paleoclimate",
     "crossref",
     "openalex",

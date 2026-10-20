@@ -155,6 +155,23 @@
     const localities = data.minerals?.localities || [];
     const literature = data.literature || [];
     const studies = data.paleoclimate_proxy?.studies || [];
+    const parses = data.name_parse?.parses || [];
+
+
+    const nameHtml = parses.length
+      ? `<ul class="list">${parses
+          .map((n) => `<li>
+              <div class="item-title">${esc(n.canonical_simple || n.verbatim || "Name")}</div>
+              <div class="item-meta">
+                ${esc(n.rank || "")}
+                ${n.genus ? ` · genus ${esc(n.genus)}` : ""}
+                ${n.species ? ` · species ${esc(n.species)}` : ""}
+                ${n.authorship_normalized ? ` · ${esc(n.authorship_normalized)}` : ""}
+                ${n.url ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">GNparser</a>` : ""}
+              </div>
+            </li>`)
+          .join("")}</ul>`
+      : `<p class="empty">No name parse.</p>`;
 
     const geologyHtml = units.length
       ? `<ul class="list">${units
@@ -309,6 +326,7 @@
 
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
+      block("Name parse", `${parses.length} GNparser result(s)`, nameHtml),
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
       block("Occurrences", `${features.length} GeoJSON feature(s)`, occHtml),
       block("Specimens", `${data.specimens?.voucher_count ?? 0} voucher(s)`, specimenHtml),

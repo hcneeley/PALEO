@@ -61,6 +61,7 @@ def index() -> dict:
             "CROSSREF",
             "OPENALEX",
             "MINDAT",
+            "GNPARSER",
         ],
         "stub_adapters": [],
         "mindat_note": "Requires MINDAT_API_KEY (env, key.env, or Render secret file)",

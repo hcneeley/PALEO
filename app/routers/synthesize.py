@@ -27,6 +27,8 @@ from ..models.schemas import (
     MineralLocality,
     MineralRecord,
     MineralsBlock,
+    NameParseBlock,
+    NameParseRecord,
     OccurrenceBrowseLink,
     OccurrenceFeature,
     OccurrencesBlock,
@@ -166,6 +168,16 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         link_radius_km=mindat_data.get("link_radius_km"),
     )
 
+    gn = results.get("GNPARSER")
+    gn_data = (gn.data or {}) if gn else {}
+    parses_raw = gn_data.get("parses") or []
+    gn_status = gn.status if gn else "skipped"
+    name_parse_block = NameParseBlock(
+        parse_count=len(parses_raw),
+        parses=_safe_models(NameParseRecord, parses_raw),
+        status=None if gn_status == "ok" else gn_status,
+    )
+
     gts = normalize_age_bounds(params.age_min, params.age_max)
     body = SynthesizeResponse(
         status="success",
@@ -193,6 +205,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         specimens=specimens,
         media_3d=media,
         minerals=minerals_block,
+        name_parse=name_parse_block,
         literature=literature,
         diagnostics=diagnostics,
     )
@@ -260,6 +273,7 @@ async def synthesize(
         ("CROSSREF", adapters.crossref.fetch_and_parse),
         ("OPENALEX", adapters.openalex.fetch_and_parse),
         ("MINDAT", adapters.mindat.fetch_and_parse),
+        ("GNPARSER", adapters.gnparser.fetch_and_parse),
     ]
     gathered = await asyncio.gather(
         *[
