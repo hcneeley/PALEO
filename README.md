@@ -1,4 +1,4 @@
-# Unified Paleontology API Engine (UPAE)
+# Paleontological Aggregator for Localities, Evidence & Occurrences (PALEO)
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 

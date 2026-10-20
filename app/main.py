@@ -20,9 +20,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Unified Paleontology API Engine",
+    title="Paleontological Aggregator for Localities, Evidence & Occurrences",
     description=(
-        "Async federated gateway synthesizing paleontology, geology, "
+        "PALEO — async federated gateway synthesizing paleontology, geology, "
         "biodiversity, and related upstream APIs into a single payload."
     ),
     version=__version__,
@@ -44,7 +44,7 @@ app.include_router(occurrences.router)
 @app.get("/api/v1/")
 def index() -> dict:
     return {
-        "name": "Unified Paleontology API Engine (UPAE)",
+        "name": "Paleontological Aggregator for Localities, Evidence & Occurrences (PALEO)",
         "version": __version__,
         "mvp": True,
         "endpoint": "/api/v1/synthesize",
