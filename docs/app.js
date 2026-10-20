@@ -53,6 +53,7 @@
     statusEl.innerHTML = "";
     resultsEl.hidden = true;
     resultsEl.innerHTML = "";
+    hideSectionNav();
     document.getElementById("taxon").focus();
   });
 
@@ -129,6 +130,7 @@
     statusEl.innerHTML = `<p class="hint">Querying upstream sources… first hits after Render sleep can take ~30–60s.</p>`;
     resultsEl.hidden = true;
     resultsEl.innerHTML = "";
+    hideSectionNav();
 
     try {
       const resp = await fetch(url);
@@ -189,15 +191,76 @@
     `;
   }
 
+  function sectionId(title) {
+    return `section-${String(title)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
+  }
+
   function block(title, sub, inner) {
     if (!inner) return "";
+    const id = sectionId(title);
     return `
-      <section class="block">
+      <section class="block" id="${esc(id)}" data-section-title="${esc(title)}">
         <h2>${esc(title)}</h2>
         ${sub ? `<p class="sub">${sub}</p>` : ""}
         ${inner}
       </section>
     `;
+  }
+
+  function hideSectionNav() {
+    if (sectionObserver) {
+      sectionObserver.disconnect();
+      sectionObserver = null;
+    }
+    if (sectionNav) sectionNav.hidden = true;
+    if (sectionNavList) sectionNavList.innerHTML = "";
+  }
+
+  function renderSectionNav() {
+    if (!sectionNav || !sectionNavList) return;
+    const sections = [...resultsEl.querySelectorAll(".block[id]")];
+    if (!sections.length) {
+      hideSectionNav();
+      return;
+    }
+
+    sectionNavList.innerHTML = sections
+      .map((sec) => {
+        const title = sec.dataset.sectionTitle || sec.querySelector("h2")?.textContent || sec.id;
+        return `<li><a href="#${esc(sec.id)}" data-target="${esc(sec.id)}">${esc(title)}</a></li>`;
+      })
+      .join("");
+    sectionNav.hidden = false;
+
+    sectionNavList.querySelectorAll("a").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const target = document.getElementById(link.dataset.target);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        sectionNavList.querySelectorAll("a").forEach((a) => a.classList.remove("is-active"));
+        link.classList.add("is-active");
+        history.replaceState(null, "", `#${link.dataset.target}`);
+      });
+    });
+
+    if (sectionObserver) sectionObserver.disconnect();
+    sectionObserver = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible?.target?.id) return;
+        sectionNavList.querySelectorAll("a").forEach((a) => {
+          a.classList.toggle("is-active", a.dataset.target === visible.target.id);
+        });
+      },
+      { rootMargin: "-20% 0px -55% 0px", threshold: [0.1, 0.25, 0.5] }
+    );
+    sections.forEach((sec) => sectionObserver.observe(sec));
   }
 
   function occRowHtml(f) {
@@ -499,6 +562,7 @@
       block("Paleoclimate", `${data.paleoclimate_proxy?.study_count ?? 0} NOAA study(ies)`, climateHtml),
       block("Literature", `${literature.length} work(s)`, litHtml),
     ].join("");
+    renderSectionNav();
 
     if (!opts.apiBase) return;
 

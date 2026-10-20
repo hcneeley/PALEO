@@ -63,6 +63,62 @@ body {
   padding: 3.5rem 0 4rem;
 }
 
+.section-nav {
+  position: fixed;
+  top: 50%;
+  left: max(0.75rem, calc((100vw - 920px) / 2 - 11.5rem));
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 10.5rem;
+  padding: 0.85rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(12, 18, 16, 0.88);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  animation: rise 0.4s ease-out both;
+}
+
+.section-nav-label {
+  margin: 0 0 0.55rem;
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.section-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.section-nav a {
+  display: block;
+  padding: 0.4rem 0.45rem;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  transition: color 0.15s, background 0.15s;
+}
+
+.section-nav a:hover,
+.section-nav a:focus-visible {
+  color: var(--ink);
+  background: rgba(232, 239, 230, 0.06);
+  outline: none;
+}
+
+.section-nav a.is-active {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
 .hero {
   margin-bottom: 2rem;
   text-align: center;
@@ -336,6 +392,7 @@ button.ghost:hover {
     linear-gradient(180deg, rgba(232, 239, 230, 0.04), transparent 42%),
     rgba(21, 32, 27, 0.72);
   box-shadow: inset 0 1px 0 rgba(232, 239, 230, 0.04);
+  scroll-margin-top: 1.25rem;
 }
 
 .block + .block {
@@ -444,6 +501,40 @@ th {
 
 .foot a:hover {
   color: var(--amber);
+}
+
+@media (max-width: 1200px) {
+  .section-nav {
+    position: sticky;
+    top: 0;
+    left: auto;
+    transform: none;
+    width: auto;
+    margin: 0 auto;
+    max-width: min(920px, calc(100% - 2rem));
+    z-index: 30;
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 0.55rem 0.65rem 0.65rem;
+  }
+
+  .section-nav-label {
+    margin-bottom: 0.35rem;
+  }
+
+  .section-nav ul {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.15rem;
+  }
+
+  .section-nav a {
+    white-space: nowrap;
+    font-size: 0.78rem;
+  }
 }
 
 @media (max-width: 720px) {
