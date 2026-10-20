@@ -59,7 +59,7 @@
             />
           </label>
         </div>
-        <div class="field-row field-row-2">
+        <div class="field-row field-row-3">
           <label class="field">
             <span>Age min (younger, Ma)</span>
             <input id="age_min" name="age_min" type="number" step="any" min="0" placeholder="0.01" />
@@ -68,10 +68,23 @@
             <span>Age max (older, Ma)</span>
             <input id="age_max" name="age_max" type="number" step="any" min="0" placeholder="2.5" />
           </label>
+          <label class="field">
+            <span>Results per source</span>
+            <input
+              id="limit"
+              name="limit"
+              type="number"
+              step="1"
+              min="1"
+              max="100"
+              value="50"
+            />
+          </label>
         </div>
         <div class="actions">
           <button type="submit" id="submit-btn">Synthesize</button>
           <button type="button" id="example-btn" class="ghost">Try Canis dirus @ LA</button>
+          <button type="button" id="clear-btn" class="ghost">Clear all</button>
         </div>
         <p id="form-hint" class="hint">Provide a taxon/mineral and/or lat + lng.</p>
       </form>

@@ -6,7 +6,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 MACROSTRAT_UNITS = "https://macrostrat.org/api/v2/units"
@@ -49,7 +48,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
 
     raw = (payload.get("success") or {}).get("data") or []
     units = []
-    for unit in raw[: settings.occurrence_limit]:
+    for unit in raw[: params.result_limit()]:
         units.append(
             {
                 "unit_id": unit.get("unit_id"),

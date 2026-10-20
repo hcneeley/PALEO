@@ -17,7 +17,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 CROSSREF_WORKS = "https://api.crossref.org/works"
@@ -85,7 +84,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     mailto = (os.environ.get("CROSSREF_MAILTO") or "").strip()
     q: dict[str, Any] = {
         "query": params.taxon,
-        "rows": min(settings.occurrence_limit, 20),
+        "rows": min(params.result_limit(), 20),
         "select": "DOI,title,author,published-print,published-online,created,issued,container-title,type,URL",
         # Prefer journal articles over supplemental components
         "filter": "type:journal-article",

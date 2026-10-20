@@ -8,7 +8,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 IDIGBIO_SEARCH = "https://search.idigbio.org/v2/search/records"
@@ -31,7 +30,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
 
     q = {
         "rq": json.dumps(rq),
-        "limit": min(settings.occurrence_limit, 100),
+        "limit": min(params.result_limit(), 100),
         "offset": 0,
     }
     client = get_client()

@@ -501,6 +501,28 @@ def test_missing_params_400(client):
     assert r.status_code == 400
 
 
+@respx.mock
+def test_limit_param_changes_cache_key(client, monkeypatch):
+    monkeypatch.setenv("MINDAT_API_KEY", "test-token")
+    _mock_live_upstreams(respx)
+    base = {"taxon": "Hadrosaurus", "lat": 34.55, "lng": -78.45}
+    r1 = client.get("/api/v1/synthesize", params={**base, "limit": 5})
+    assert r1.status_code == 200
+    assert r1.headers.get("X-Cache") == "MISS"
+    r2 = client.get("/api/v1/synthesize", params={**base, "limit": 5})
+    assert r2.headers.get("X-Cache") == "HIT"
+    r3 = client.get("/api/v1/synthesize", params={**base, "limit": 10})
+    assert r3.status_code == 200
+    assert r3.headers.get("X-Cache") == "MISS"
+
+
+def test_limit_out_of_range_422(client):
+    r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 0})
+    assert r.status_code == 422
+    r2 = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 101})
+    assert r2.status_code == 422
+
+
 @pytest.mark.asyncio
 async def test_run_adapter_timeout():
     from app.adapters.base import run_adapter

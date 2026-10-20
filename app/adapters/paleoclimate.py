@@ -124,7 +124,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         )
 
     # NOAA full-study responses max out at 10
-    limit = min(10, max(1, settings.occurrence_limit // 5 or 10))
+    limit = min(10, max(1, params.result_limit() // 5 or 10))
     q: dict[str, Any] = {
         "dataPublisher": "NOAA",
         "dataTypeId": CLIMATE_RECONSTRUCTIONS,

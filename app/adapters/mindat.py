@@ -222,7 +222,7 @@ async def fetch_spatial(
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
-    limit = min(settings.occurrence_limit, 20)
+    limit = min(params.result_limit(), 20)
     radius = params.radius_km or settings.default_radius_km
     # Mindat expects distance like "50km"
     distance = f"{max(1, int(round(radius)))}km"
@@ -360,7 +360,7 @@ async def fetch_by_name(params: QueryParams) -> AdapterResult:
         "Authorization": f"Token {key}",
         "Accept": "application/json",
     }
-    limit = min(settings.occurrence_limit, 25)
+    limit = min(params.result_limit(), 25)
     minerals: list[dict[str, Any]] = []
     localities: list[dict[str, Any]] = []
     client = get_client()

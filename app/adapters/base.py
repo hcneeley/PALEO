@@ -19,6 +19,12 @@ class QueryParams:
     taxon: str | None = None
     age_min: float | None = None
     age_max: float | None = None
+    limit: int | None = None
+
+    def result_limit(self) -> int:
+        """Per-source max records for this request (clamped 1–100)."""
+        n = self.limit if self.limit is not None else settings.occurrence_limit
+        return max(1, min(int(n), 100))
 
 
 @dataclass

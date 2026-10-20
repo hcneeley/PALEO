@@ -247,6 +247,12 @@ async def synthesize(
     ),
     age_min: float | None = Query(None, description="Younger age bound (Ma)"),
     age_max: float | None = Query(None, description="Older age bound (Ma)"),
+    limit: int | None = Query(
+        None,
+        ge=1,
+        le=100,
+        description="Max records per upstream source (default 50)",
+    ),
 ) -> dict:
     if lat is None and lng is None and not taxon:
         response.status_code = 400
@@ -256,6 +262,7 @@ async def synthesize(
         }
 
     radius = radius_km if radius_km is not None else settings.default_radius_km
+    resolved_limit = limit if limit is not None else settings.occurrence_limit
     key = make_cache_key(
         lat=lat,
         lng=lng,
@@ -263,6 +270,7 @@ async def synthesize(
         taxon=taxon,
         age_min=age_min,
         age_max=age_max,
+        limit=resolved_limit,
     )
     cached = cache.get(key)
     if cached is not None:
@@ -282,6 +290,7 @@ async def synthesize(
         taxon=taxon,
         age_min=age_min,
         age_max=age_max,
+        limit=resolved_limit,
     )
 
     t0 = time.perf_counter()
@@ -353,6 +362,7 @@ async def synthesize(
                 taxon=params.taxon,
                 age_min=params.age_min,
                 age_max=params.age_max,
+                limit=params.limit,
             )
             spatial = await run_adapter(
                 "MINDAT",

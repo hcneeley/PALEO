@@ -19,6 +19,7 @@ def make_cache_key(
     taxon: str | None,
     age_min: float | None,
     age_max: float | None,
+    limit: int | None = None,
 ) -> str:
     payload = {
         "lat": None if lat is None else round(float(lat), 6),
@@ -27,6 +28,7 @@ def make_cache_key(
         "taxon": (taxon or "").strip().lower() or None,
         "age_min": age_min,
         "age_max": age_max,
+        "limit": limit,
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()

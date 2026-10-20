@@ -16,7 +16,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 MORPHOSOURCE_MEDIA = "https://www.morphosource.org/api/media"
@@ -72,7 +71,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     q = {
         "q": params.taxon,
         "search_field": "all_fields",
-        "per_page": min(settings.occurrence_limit, 25),
+        "per_page": min(params.result_limit(), 25),
         "page": 1,
     }
     client = get_client()

@@ -17,7 +17,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 OPENALEX_WORKS = "https://api.openalex.org/works"
@@ -80,7 +79,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     api_key = (os.environ.get("OPENALEX_API_KEY") or "").strip()
     q: dict[str, Any] = {
         "search": params.taxon,
-        "per_page": min(settings.occurrence_limit, 25),
+        "per_page": min(params.result_limit(), 25),
         "mailto": mailto,
         # OR values for one field: type:article|review (not type:article|type:review)
         "filter": "type:article|review",

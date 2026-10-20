@@ -38,7 +38,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         )
 
     q: dict = {
-        "limit": min(settings.occurrence_limit, 100),
+        "limit": min(params.result_limit(), 100),
         "offset": 0,
         "hasCoordinate": "true",
     }

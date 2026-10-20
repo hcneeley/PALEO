@@ -132,6 +132,10 @@ body {
   grid-template-columns: repeat(2, 1fr);
 }
 
+.field-row-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 input {
   width: 100%;
   border: 1px solid var(--line);
@@ -391,7 +395,8 @@ th {
   }
 
   .field-row,
-  .field-row-2 {
+  .field-row-2,
+  .field-row-3 {
     grid-template-columns: 1fr;
   }
 

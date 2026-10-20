@@ -6,7 +6,6 @@ import httpx
 
 from ..http import get_client
 
-from ..config import settings
 from .base import AdapterResult, QueryParams
 
 NEOTOMA_BASE = "https://api.neotomadb.org/v2.0/data/"
@@ -44,7 +43,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         )
 
     features = []
-    remaining = settings.occurrence_limit
+    remaining = params.result_limit()
     for tid in taxon_ids:
         if remaining <= 0:
             break
@@ -82,6 +81,6 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                     },
                 }
             )
-            remaining = settings.occurrence_limit - len(features)
+            remaining = params.result_limit() - len(features)
 
     return AdapterResult(provider="NEOTOMA", status="ok", data={"features": features})

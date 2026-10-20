@@ -5,13 +5,19 @@
   const hint = document.getElementById("form-hint");
   const submitBtn = document.getElementById("submit-btn");
   const exampleBtn = document.getElementById("example-btn");
+  const clearBtn = document.getElementById("clear-btn");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
+  const DEFAULT_LIMIT = 50;
 
   function resolveApiBase() {
     const params = new URLSearchParams(window.location.search);
     const fromQuery = (params.get("api") || "").trim().replace(/\/$/, "");
     return fromQuery || DEFAULT_API;
+  }
+
+  function fieldIds() {
+    return ["taxon", "lat", "lng", "radius_km", "age_min", "age_max", "limit"];
   }
 
   exampleBtn.addEventListener("click", () => {
@@ -21,6 +27,22 @@
     document.getElementById("radius_km").value = "500";
     document.getElementById("age_min").value = "";
     document.getElementById("age_max").value = "";
+    document.getElementById("limit").value = String(DEFAULT_LIMIT);
+  });
+
+  clearBtn.addEventListener("click", () => {
+    for (const id of fieldIds()) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.value = id === "limit" ? String(DEFAULT_LIMIT) : "";
+    }
+    hint.textContent = "Provide a taxon/mineral and/or lat + lng.";
+    hint.classList.remove("error");
+    statusEl.hidden = true;
+    statusEl.innerHTML = "";
+    resultsEl.hidden = true;
+    resultsEl.innerHTML = "";
+    document.getElementById("taxon").focus();
   });
 
   form.addEventListener("submit", async (event) => {
@@ -34,6 +56,8 @@
     const radius = (document.getElementById("radius_km").value || "").trim();
     const ageMin = (document.getElementById("age_min").value || "").trim();
     const ageMax = (document.getElementById("age_max").value || "").trim();
+    const limitRaw = (document.getElementById("limit").value || "").trim();
+    const limit = limitRaw === "" ? DEFAULT_LIMIT : Number(limitRaw);
 
     if (!taxon && !(lat && lng)) {
       hint.textContent = "Provide a taxon/mineral and/or both latitude and longitude.";
@@ -50,6 +74,11 @@
       hint.classList.add("error");
       return;
     }
+    if (!Number.isFinite(limit) || limit < 1 || limit > 100 || !Number.isInteger(limit)) {
+      hint.textContent = "Results per source must be a whole number from 1 to 100.";
+      hint.classList.add("error");
+      return;
+    }
 
     const apiBase = resolveApiBase();
 
@@ -60,6 +89,7 @@
     if (radius) qs.set("radius_km", radius);
     if (ageMin) qs.set("age_min", ageMin);
     if (ageMax) qs.set("age_max", ageMax);
+    qs.set("limit", String(limit));
 
     const url = `${apiBase}/api/v1/synthesize?${qs.toString()}`;
     submitBtn.disabled = true;
@@ -79,7 +109,7 @@
         throw new Error(body.detail || "Synthesize failed");
       }
       renderStatus(body);
-      renderResults(body);
+      renderResults(body, limit);
     } catch (err) {
       hint.textContent = String(err.message || err);
       hint.classList.add("error");
@@ -132,7 +162,7 @@
     `;
   }
 
-  function renderResults(data) {
+  function renderResults(data, limit = DEFAULT_LIMIT) {
     const units = data.geology?.macrostrat_units || [];
     const features = data.occurrences?.features || [];
     const specimens = data.specimens?.records || [];
@@ -144,6 +174,7 @@
     const parses = data.name_parse?.parses || [];
     const hierarchy = data.taxonomy?.hierarchy || [];
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
+    const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, 100));
 
 
     const nameHtml = parses.length
@@ -204,7 +235,7 @@
           .join("")}</ul>`
       : `<p class="empty">No Macrostrat units.</p>`;
 
-    const PREVIEW = 40;
+    const PREVIEW = Math.min(show, 40);
     const occRow = (f) => {
       const p = f.properties || {};
       const coords = f.geometry?.coordinates;
@@ -260,7 +291,7 @@
 
     const specimenHtml = specimens.length
       ? `<ul class="list">${specimens
-          .slice(0, 25)
+          .slice(0, show)
           .map(
             (s) => `<li>
               <div class="item-title">${esc(s.scientific_name || "Specimen")}</div>
@@ -274,7 +305,7 @@
 
     const mediaHtml = media.length
       ? `<ul class="list">${media
-          .slice(0, 20)
+          .slice(0, show)
           .map(
             (m) => `<li>
               <div class="item-title">${esc(m.title || m.media_id || "Media")}</div>
@@ -311,7 +342,7 @@
 
     const litHtml = literature.length
       ? `<ul class="list">${literature
-          .slice(0, 30)
+          .slice(0, show)
           .map((L) => {
             const authors = (L.authors || []).slice(0, 3).join(", ");
             const href = L.url || (L.doi ? `https://doi.org/${L.doi}` : null);
@@ -330,7 +361,7 @@
 
     const climateHtml = studies.length
       ? `<ul class="list">${studies
-          .slice(0, 15)
+          .slice(0, show)
           .map(
             (s) => `<li>
               <div class="item-title">${esc(s.study_name || s.study_id || "Study")}</div>

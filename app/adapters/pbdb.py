@@ -38,7 +38,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     # then optionally filter by radius client-side.
     q: dict = {
         "show": "coords,attr,class,paleoloc",
-        "limit": max(settings.occurrence_limit * 4, 100),
+        "limit": max(params.result_limit() * 4, 100),
     }
     if params.taxon:
         q["base_name"] = params.taxon
@@ -104,7 +104,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                 },
             }
         )
-        if len(features) >= settings.occurrence_limit:
+        if len(features) >= params.result_limit():
             break
 
     return AdapterResult(provider="PBDB", status="ok", data={"features": features})
