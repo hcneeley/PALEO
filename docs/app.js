@@ -296,10 +296,16 @@
   function formatTotals(sourceTotals, features) {
     if (sourceTotals?.length) {
       return sourceTotals
+        .filter((s) => (Number(s.returned) || 0) > 0 || s.total != null)
         .map((s) => {
-          const total = s.total != null ? Number(s.total).toLocaleString() : "?";
-          return `${esc(s.provider)} ${esc(s.returned)} of ${esc(total)}`;
+          const returned = Number(s.returned) || 0;
+          if (returned <= 0 && (s.total == null || Number(s.total) === 0)) return null;
+          if (s.total != null && Number.isFinite(Number(s.total))) {
+            return `${esc(s.provider)} ${esc(returned)} of ${esc(Number(s.total).toLocaleString())}`;
+          }
+          return returned > 0 ? `${esc(s.provider)} ${esc(returned)}` : null;
         })
+        .filter(Boolean)
         .join(" · ");
     }
     const counts = {};
@@ -308,6 +314,7 @@
       counts[src] = (counts[src] || 0) + 1;
     }
     return Object.entries(counts)
+      .filter(([, n]) => n > 0)
       .map(([src, n]) => `${esc(src)} ${esc(n)}`)
       .join(" · ");
   }
@@ -434,18 +441,14 @@
           }).</span>`;
 
     const occHtml = features.length
-      ? `${
-          totalsLine ? `<p class="occ-totals">${totalsLine}</p>` : ""
-        }<div class="table-wrap"><table>
+      ? `<div class="table-wrap"><table>
           <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
           <tbody id="occ-tbody">${features.map(occRowHtml).join("")}</tbody>
         </table></div>
         <p class="occ-progress" id="occ-progress">Showing <strong>${features.length}</strong> loaded occurrence(s)${
           gbif.total != null
-            ? ` · GBIF catalog <strong>${Number(gbif.total).toLocaleString()}</strong>`
-            : gbif.returned
-              ? ` · GBIF in page <strong>${gbif.returned}</strong>`
-              : ""
+            ? ` · GBIF <strong>${gbif.returned.toLocaleString()}</strong> of <strong>${Number(gbif.total).toLocaleString()}</strong>`
+            : ""
         }</p>
         <p class="occ-links" id="occ-links">
           ${
@@ -544,9 +547,9 @@
           .join("")}</ul>`
       : `<p class="empty">No paleoclimate studies.</p>`;
 
-    const occSub = totalsLine
-      ? `${features.length} loaded · ${totalsLine}`
-      : `${features.length} GeoJSON feature(s)`;
+    const occSub = `${features.length} loaded${
+      totalsLine ? ` · ${totalsLine}` : ""
+    }`;
 
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
