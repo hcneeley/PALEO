@@ -233,6 +233,9 @@ async def fetch_spatial(
     localities: list[dict[str, Any]] = []
     mineral_ids: list[int] = []
     loc_ids: list[int] = []
+    # mineral_id -> locality ids from geomin (used to drop minerals whose
+    # Mindat-linked localities all fall outside radius_km)
+    mineral_to_locs: dict[int, list[int]] = {}
 
     try:
         geomin = await client.post(
@@ -243,8 +246,22 @@ async def fetch_spatial(
         )
         if geomin.status_code < 400:
             payload = geomin.json()
-            mineral_ids = _ids(payload)[:limit]
-            loc_ids = _locality_ids_from_geomin(payload)[:limit]
+            if isinstance(payload, dict):
+                for k, locs in payload.items():
+                    if not str(k).isdigit():
+                        continue
+                    mid = int(k)
+                    cleaned = [
+                        int(x)
+                        for x in (locs or [])
+                        if isinstance(x, int) or (isinstance(x, str) and str(x).isdigit())
+                    ]
+                    mineral_to_locs[mid] = cleaned
+                mineral_ids = list(mineral_to_locs.keys())[: max(limit * 2, limit)]
+                loc_ids = _locality_ids_from_geomin(payload)[: max(limit * 3, 30)]
+            else:
+                mineral_ids = _ids(payload)[:limit]
+                loc_ids = []
     except httpx.HTTPError:
         mineral_ids = []
 
@@ -257,22 +274,54 @@ async def fetch_spatial(
                 timeout=min(settings.timeout_for("MINDAT"), 20.0),
             )
             if geoloc.status_code < 400:
-                loc_ids = _ids(geoloc.json())[:limit]
+                loc_ids = _ids(geoloc.json())[: max(limit * 3, 30)]
         except httpx.HTTPError:
             loc_ids = []
 
     if mineral_ids:
         minerals = await _hydrate_minerals(
-            client, headers, mineral_ids, link_mode="spatial", limit=limit
+            client, headers, mineral_ids, link_mode="spatial", limit=max(limit * 2, limit)
         )
     localities = await _hydrate_localities(
         client,
         headers,
         loc_ids,
         link_mode="spatial",
-        limit=limit,
+        limit=max(limit * 3, 30),
         origin=(float(lat), float(lng)),
     )
+
+    # Mindat geomin/geoloc sometimes returns far-away IDs — enforce radius client-side.
+    radius_f = float(radius)
+    in_radius = [
+        loc
+        for loc in localities
+        if loc.get("distance_km") is not None and float(loc["distance_km"]) <= radius_f + 0.5
+    ]
+    in_radius_ids = {
+        int(str(loc.get("locality_id") or "").rsplit(":", 1)[-1])
+        for loc in in_radius
+        if loc.get("locality_id") and str(loc.get("locality_id")).rsplit(":", 1)[-1].isdigit()
+    }
+
+    if mineral_to_locs and in_radius_ids:
+        keep_mids = {
+            mid
+            for mid, locs in mineral_to_locs.items()
+            if any(lid in in_radius_ids for lid in locs)
+        }
+        minerals = [
+            m
+            for m in minerals
+            if (m.get("mineral_id") or "").rsplit(":", 1)[-1].isdigit()
+            and int((m.get("mineral_id") or "").rsplit(":", 1)[-1]) in keep_mids
+        ]
+    elif mineral_to_locs and not in_radius_ids:
+        # No verified nearby localities — don't claim distant minerals as linked.
+        minerals = []
+
+    localities = in_radius[:limit]
+    minerals = minerals[:limit]
 
     return AdapterResult(
         provider="MINDAT",

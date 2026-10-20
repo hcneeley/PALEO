@@ -255,7 +255,14 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
                         "latitude": 34.5,
                         "longitude": -78.4,
                         "country": "USA",
-                    }
+                    },
+                    {
+                        "id": 11,
+                        "txt": "Far away locality",
+                        "latitude": 36.7,
+                        "longitude": 3.0,
+                        "country": "Algeria",
+                    },
                 ]
             },
         )
@@ -316,6 +323,11 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["minerals"]["locality_count"] == 1
     assert body["minerals"]["link_mode"] == "spatial"
     assert body["minerals"]["linked_taxon"] == "Hadrosaurus"
+    assert all(
+        (loc.get("distance_km") is None or loc["distance_km"] <= 50.5)
+        for loc in body["minerals"]["localities"]
+    )
+    assert not any("Algeria" in (loc.get("country") or "") for loc in body["minerals"]["localities"])
 
 
 @respx.mock
