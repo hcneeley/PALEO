@@ -29,7 +29,8 @@ def make_cache_key(
         "age_max": age_max,
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"synthesize:{digest}"
 
 
 class MemoryCache:

@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -73,10 +75,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         "per_page": min(settings.occurrence_limit, 25),
         "page": 1,
     }
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
-        resp = await client.get(MORPHOSOURCE_MEDIA, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(MORPHOSOURCE_MEDIA, params=q)
+    resp.raise_for_status()
+    payload = resp.json()
 
     media = (payload.get("response") or {}).get("media") or []
     records = [_normalize_media(rec) for rec in media]

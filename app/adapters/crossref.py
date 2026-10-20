@@ -15,6 +15,8 @@ from typing import Any
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -95,10 +97,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         "Accept": "application/json",
         "User-Agent": f"UPAE/0.1 (https://github.com/hcneeley/upae; mailto:{mailto or 'hcneeley@icloud.com'})",
     }
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec, headers=headers) as client:
-        resp = await client.get(CROSSREF_WORKS, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(CROSSREF_WORKS, params=q, headers=headers)
+    resp.raise_for_status()
+    payload = resp.json()
 
     message = payload.get("message") or {}
     items = message.get("items") or []

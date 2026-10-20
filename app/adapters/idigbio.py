@@ -6,6 +6,8 @@ import json
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -32,10 +34,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         "limit": min(settings.occurrence_limit, 100),
         "offset": 0,
     }
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
-        resp = await client.get(IDIGBIO_SEARCH, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(IDIGBIO_SEARCH, params=q)
+    resp.raise_for_status()
+    payload = resp.json()
 
     records = []
     for item in payload.get("items") or []:

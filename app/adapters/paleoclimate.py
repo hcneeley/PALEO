@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -147,15 +149,15 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         if younger is not None:
             q["latestYear"] = int(younger * 1_000_000)
 
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
-        resp = await client.get(NOAA_SEARCH, params=q)
-        # NOAA returns 204 with an empty body when a search matches nothing
-        if resp.status_code == 204 or not resp.content:
-            studies_raw: list[dict[str, Any]] = []
-        else:
-            resp.raise_for_status()
-            payload = resp.json()
-            studies_raw = payload.get("study") or []
+    client = get_client()
+    resp = await client.get(NOAA_SEARCH, params=q)
+    # NOAA returns 204 with an empty body when a search matches nothing
+    if resp.status_code == 204 or not resp.content:
+        studies_raw: list[dict[str, Any]] = []
+    else:
+        resp.raise_for_status()
+        payload = resp.json()
+        studies_raw = payload.get("study") or []
 
     studies = [_normalize_study(s) for s in studies_raw]
     return AdapterResult(

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -48,10 +50,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         q["geoDistance"] = f"{params.lat},{params.lng},{r}km"
 
     headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec, headers=headers) as client:
-        resp = await client.get(GBIF_OCC_SEARCH, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(GBIF_OCC_SEARCH, params=q, headers=headers)
+    resp.raise_for_status()
+    payload = resp.json()
 
     features = []
     for rec in payload.get("results") or []:

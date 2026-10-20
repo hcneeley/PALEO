@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -40,10 +42,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         "response": "long",
         "format": "json",
     }
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
-        resp = await client.get(MACROSTRAT_UNITS, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(MACROSTRAT_UNITS, params=q)
+    resp.raise_for_status()
+    payload = resp.json()
 
     raw = (payload.get("success") or {}).get("data") or []
     units = []

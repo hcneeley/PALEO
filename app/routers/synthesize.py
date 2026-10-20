@@ -8,9 +8,10 @@ from functools import partial
 from typing import Any
 
 from fastapi import APIRouter, Query, Response
+from pydantic import ValidationError
 
 from .. import adapters
-from ..adapters.base import QueryParams, run_adapter
+from ..adapters.base import AdapterResult, QueryParams, run_adapter
 from ..cache import cache, make_cache_key
 from ..config import settings
 from ..gts import normalize_age_bounds
@@ -36,36 +37,62 @@ from ..models.schemas import (
 
 router = APIRouter(prefix="/api/v1", tags=["synthesize"])
 
+def _safe_models(model, rows: list) -> list:
+    out = []
+    for row in rows:
+        try:
+            out.append(model.model_validate(row))
+        except ValidationError:
+            continue
+    return out
+
+
+
 
 def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float, cache_status: str) -> dict:
     diagnostics = [r.diagnostic() for r in results.values()]
 
-    units_raw = (results["MACROSTRAT"].data or {}).get("units") or []
+    macro = results.get("MACROSTRAT")
+    units_raw = (macro.data or {}).get("units") or [] if macro else []
     geology = GeologyBlock(
-        macrostrat_units=[MacrostratUnit(**u) for u in units_raw]
+        macrostrat_units=_safe_models(MacrostratUnit, units_raw)
     )
 
     features: list[OccurrenceFeature] = []
     for key in ("PBDB", "NEOTOMA", "GBIF"):
-        for feat in (results[key].data or {}).get("features") or []:
-            features.append(OccurrenceFeature.model_validate(feat))
+        adapter = results.get(key)
+        if not adapter:
+            continue
+        for feat in (adapter.data or {}).get("features") or []:
+            try:
+                features.append(OccurrenceFeature.model_validate(feat))
+            except ValidationError:
+                continue
 
-    specimens_raw = (results["IDIGBIO"].data or {}).get("records") or []
+    idig = results.get("IDIGBIO")
+    specimens_raw = (idig.data or {}).get("records") or [] if idig else []
+    specimen_records = _safe_models(SpecimenRecord, specimens_raw)
     specimens = SpecimensBlock(
-        voucher_count=len(specimens_raw),
-        records=[SpecimenRecord.model_validate(r) for r in specimens_raw],
+        voucher_count=len(specimen_records),
+        records=specimen_records,
     )
 
-    media_raw = (results["MORPHOSOURCE"].data or {}).get("records") or []
-    ms_status = results["MORPHOSOURCE"].status
+    ms = results.get("MORPHOSOURCE")
+    media_raw = (ms.data or {}).get("records") or [] if ms else []
+    ms_status = ms.status if ms else "skipped"
+    media_records = _safe_models(Media3dRecord, media_raw)
     media = Media3dBlock(
-        has_3d_assets=bool(media_raw),
-        records=[Media3dRecord.model_validate(r) for r in media_raw],
+        has_3d_assets=bool(media_records),
+        records=media_records,
         status=None if ms_status == "ok" else ms_status,
     )
 
-    climate_raw = (results["PALEOCLIMATE"].data or {}).get("proxy") or {}
-    paleoclimate = PaleoclimateProxy.model_validate(climate_raw)
+    climate = results.get("PALEOCLIMATE")
+    climate_raw = (climate.data or {}).get("proxy") or {} if climate else {}
+    try:
+        paleoclimate = PaleoclimateProxy.model_validate(climate_raw)
+    except ValidationError:
+        paleoclimate = PaleoclimateProxy(status="error")
 
     # OpenAlex first (relevance), then Crossref; dedupe by DOI
     literature_raw: list[Any] = []
@@ -79,7 +106,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
             if doi:
                 seen_doi.add(doi)
             literature_raw.append(row)
-    literature = [LiteratureRecord.model_validate(x) for x in literature_raw]
+    literature = _safe_models(LiteratureRecord, literature_raw)
 
     mindat = results.get("MINDAT")
     minerals_raw = (mindat.data or {}).get("minerals") or [] if mindat else []
@@ -88,8 +115,8 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     minerals_block = MineralsBlock(
         mineral_count=len(minerals_raw),
         locality_count=len(localities_raw),
-        minerals=[MineralRecord.model_validate(x) for x in minerals_raw],
-        localities=[MineralLocality.model_validate(x) for x in localities_raw],
+        minerals=_safe_models(MineralRecord, minerals_raw),
+        localities=_safe_models(MineralLocality, localities_raw),
         status=None if mindat_status == "ok" else mindat_status,
     )
 
@@ -182,9 +209,17 @@ async def synthesize(
         ("MINDAT", adapters.mindat.fetch_and_parse),
     ]
     gathered = await asyncio.gather(
-        *[run_adapter(name, partial(fn, params)) for name, fn in names]
+        *[run_adapter(name, partial(fn, params)) for name, fn in names],
+        return_exceptions=True,
     )
-    results = {r.provider: r for r in gathered}
+    results: dict[str, AdapterResult] = {}
+    for (name, _), item in zip(names, gathered):
+        if isinstance(item, Exception):
+            results[name] = AdapterResult(
+                provider=name, status="error", error=str(item)
+            )
+        else:
+            results[item.provider] = item
     elapsed_ms = (time.perf_counter() - t0) * 1000
     payload = _assemble(params, results, elapsed_ms=elapsed_ms, cache_status="MISS")
     cache.set(key, payload)

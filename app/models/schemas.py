@@ -2,21 +2,43 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
+
+
+def _coerce_float(v: Any) -> float | None:
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(v: Any) -> int | None:
+    if v is None or v == "":
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+OptFloat = Annotated[Optional[float], BeforeValidator(_coerce_float)]
+OptInt = Annotated[Optional[int], BeforeValidator(_coerce_int)]
 
 
 class Coordinates(BaseModel):
-    lat: float | None = None
-    lng: float | None = None
+    lat: OptFloat = None
+    lng: OptFloat = None
 
 
 class GtsNormalizedAge(BaseModel):
     epoch: str | None = None
     stage: str | None = None
-    age_min_ma: float | None = None
-    age_max_ma: float | None = None
+    age_min_ma: OptFloat = None
+    age_max_ma: OptFloat = None
 
 
 class QueryBlock(BaseModel):
@@ -27,11 +49,11 @@ class QueryBlock(BaseModel):
 
 
 class MacrostratUnit(BaseModel):
-    unit_id: int | None = None
+    unit_id: OptInt = None
     unit_name: str | None = None
     lithology: str | None = None
-    age_bottom_ma: float | None = None
-    age_top_ma: float | None = None
+    age_bottom_ma: OptFloat = None
+    age_top_ma: OptFloat = None
     environment: str | None = None
 
 
@@ -47,17 +69,17 @@ class PaleoclimateStudy(BaseModel):
     data_type: str | None = None
     investigators: str | None = None
     site_name: str | None = None
-    lat: float | None = None
-    lng: float | None = None
+    lat: OptFloat = None
+    lng: OptFloat = None
     data_publisher: str | None = None
     url: str | None = None
 
 
 class PaleoclimateProxy(BaseModel):
-    target_ma: float | None = None
-    estimated_mat_celsius: float | None = None
-    estimated_map_mm: float | None = None
-    estimated_pco2_ppm: float | None = None
+    target_ma: OptFloat = None
+    estimated_mat_celsius: OptFloat = None
+    estimated_map_mm: OptFloat = None
+    estimated_pco2_ppm: OptFloat = None
     model_source: str | None = None
     status: str | None = None
     study_count: int = 0
@@ -75,10 +97,10 @@ class OccurrenceProperties(BaseModel):
     taxon_name: str | None = None
     accepted_name: str | None = None
     dwc_eventDate: str | None = None
-    max_ma: float | None = None
-    min_ma: float | None = None
-    paleolat: float | None = None
-    paleolng: float | None = None
+    max_ma: OptFloat = None
+    min_ma: OptFloat = None
+    paleolat: OptFloat = None
+    paleolng: OptFloat = None
 
 
 class OccurrenceFeature(BaseModel):
@@ -141,11 +163,11 @@ class LiteratureRecord(BaseModel):
     doi: str | None = None
     title: str | None = None
     authors: list[str] = Field(default_factory=list)
-    year: int | None = None
+    year: OptInt = None
     container_title: str | None = None
     type: str | None = None
     url: str | None = None
-    cited_by_count: int | None = None
+    cited_by_count: OptInt = None
 
 
 class MineralRecord(BaseModel):
@@ -155,8 +177,8 @@ class MineralRecord(BaseModel):
     formula: str | None = None
     ima_status: Any = None
     crystal_system: str | None = None
-    hardness_min: float | None = None
-    hardness_max: float | None = None
+    hardness_min: OptFloat = None
+    hardness_max: OptFloat = None
     url: str | None = None
 
 
@@ -165,8 +187,8 @@ class MineralLocality(BaseModel):
     locality_id: str | None = None
     name: str | None = None
     country: str | None = None
-    lat: float | None = None
-    lon: float | None = None
+    lat: OptFloat = None
+    lon: OptFloat = None
     mineral: str | None = None
     url: str | None = None
 
@@ -184,7 +206,7 @@ class AdapterDiagnostic(BaseModel):
     status: str
     error: str | None = None
     record_count: int = 0
-    elapsed_ms: float | None = None
+    elapsed_ms: OptFloat = None
 
 
 class SynthesizeResponse(BaseModel):

@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
+from .http import shutdown_http_client, startup_http_client
 from .routers import synthesize
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.http_client = await startup_http_client()
+    yield
+    await shutdown_http_client()
+
 
 app = FastAPI(
     title="Unified Paleontology API Engine",
@@ -15,6 +26,7 @@ app = FastAPI(
         "biodiversity, and related upstream APIs into a single payload."
     ),
     version=__version__,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from ..secrets import mindat_api_key
 from .base import AdapterResult, QueryParams
@@ -94,66 +96,70 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     minerals: list[dict[str, Any]] = []
     localities: list[dict[str, Any]] = []
 
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec, headers=headers) as client:
-        # 1) geomaterials-search
-        try:
-            resp = await client.get(
-                MINDAT_BASE + "geomaterials-search/",
-                params={"q": params.taxon, "size": limit, "ima": 1, "format": "json"},
-            )
-            if resp.status_code < 400:
-                minerals = [_normalize_mineral(r) for r in _results(resp.json())[:limit]]
-        except httpx.HTTPError:
-            minerals = []
-
-        # 2) fallback minerals-ima
-        if not minerals:
-            resp = await client.get(
-                MINDAT_BASE + "minerals-ima/",
-                params={"q": params.taxon, "page": 1, "page_size": limit, "format": "json"},
-            )
-            resp.raise_for_status()
+    client = get_client()
+    # 1) geomaterials-search
+    try:
+        resp = await client.get(
+            MINDAT_BASE + "geomaterials-search/",
+            params={"q": params.taxon, "size": limit, "ima": 1, "format": "json"},
+            headers=headers,
+        )
+        if resp.status_code < 400:
             minerals = [_normalize_mineral(r) for r in _results(resp.json())[:limit]]
+    except httpx.HTTPError:
+        minerals = []
 
-        # 3) localities for top hit (cap IDs — common minerals like quartz can hang on full expand)
-        if minerals:
-            mid = (minerals[0].get("mineral_id") or "").split(":")[-1]
-            if mid.isdigit():
-                try:
-                    detail = await client.get(
-                        MINDAT_BASE + f"geomaterials/{mid}/",
+    # 2) fallback minerals-ima
+    if not minerals:
+        resp = await client.get(
+            MINDAT_BASE + "minerals-ima/",
+            params={"q": params.taxon, "page": 1, "page_size": limit, "format": "json"},
+            headers=headers,
+        )
+        resp.raise_for_status()
+        minerals = [_normalize_mineral(r) for r in _results(resp.json())[:limit]]
+
+    # 3) localities for top hit (cap IDs — common minerals like quartz can hang on full expand)
+    if minerals:
+        mid = (minerals[0].get("mineral_id") or "").split(":")[-1]
+        if mid.isdigit():
+            try:
+                detail = await client.get(
+                    MINDAT_BASE + f"geomaterials/{mid}/",
+                    params={
+                        "fields": "id,name,locality",
+                        "format": "json",
+                    },
+                    headers=headers,
+                    timeout=min(settings.adapter_timeout_sec, 8.0),
+                )
+                loc_ids: list[int] = []
+                if detail.status_code < 400:
+                    body = detail.json()
+                    rows = _results(body) or ([body] if isinstance(body, dict) else [])
+                    raw_ids = (rows[0].get("locality") if rows else None) or []
+                    loc_ids = [int(x) for x in raw_ids if str(x).isdigit()][: min(limit, 10)]
+                if loc_ids:
+                    loc_resp = await client.get(
+                        MINDAT_BASE + "localities/",
                         params={
-                            "fields": "id,name,locality",
+                            "id__in": ",".join(str(i) for i in loc_ids),
+                            "fields": "id,txt,latitude,longitude,country",
+                            "page_size": min(limit, 10),
+                            "page": 1,
                             "format": "json",
                         },
+                        headers=headers,
                         timeout=min(settings.adapter_timeout_sec, 8.0),
                     )
-                    loc_ids: list[int] = []
-                    if detail.status_code < 400:
-                        body = detail.json()
-                        rows = _results(body) or ([body] if isinstance(body, dict) else [])
-                        raw_ids = (rows[0].get("locality") if rows else None) or []
-                        loc_ids = [int(x) for x in raw_ids if str(x).isdigit()][: min(limit, 10)]
-                    if loc_ids:
-                        loc_resp = await client.get(
-                            MINDAT_BASE + "localities/",
-                            params={
-                                "id__in": ",".join(str(i) for i in loc_ids),
-                                "fields": "id,txt,latitude,longitude,country",
-                                "page_size": min(limit, 10),
-                                "page": 1,
-                                "format": "json",
-                            },
-                            timeout=min(settings.adapter_timeout_sec, 8.0),
-                        )
-                        if loc_resp.status_code < 400:
-                            mineral_name = minerals[0].get("name")
-                            localities = [
-                                _normalize_locality(r, mineral_name)
-                                for r in _results(loc_resp.json())[:limit]
-                            ]
-                except httpx.HTTPError:
-                    localities = []
+                    if loc_resp.status_code < 400:
+                        mineral_name = minerals[0].get("name")
+                        localities = [
+                            _normalize_locality(r, mineral_name)
+                            for r in _results(loc_resp.json())[:limit]
+                        ]
+            except httpx.HTTPError:
+                localities = []
 
     return AdapterResult(
         provider="MINDAT",

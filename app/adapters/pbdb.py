@@ -6,6 +6,8 @@ import math
 
 import httpx
 
+from ..http import get_client
+
 from ..config import settings
 from .base import AdapterResult, QueryParams
 
@@ -55,10 +57,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     if params.age_min is not None:
         q["min_ma"] = params.age_min
 
-    async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
-        resp = await client.get(PBDB_OCCS, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+    client = get_client()
+    resp = await client.get(PBDB_OCCS, params=q)
+    resp.raise_for_status()
+    payload = resp.json()
 
     radius = params.radius_km or settings.default_radius_km
     features = []
