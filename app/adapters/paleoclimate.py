@@ -18,8 +18,9 @@ from ..config import settings
 from .base import AdapterResult, QueryParams
 
 NOAA_SEARCH = "https://www.ncei.noaa.gov/access/paleo-search/study/search.json"
-# Climate reconstructions | tree ring | pollen | paleolimnology | ice cores
-DEFAULT_DATA_TYPES = "3|18|16|13|7"
+# Climate reconstructions (primary). Additional types can widen the net but
+# NOAA often returns HTTP 204 (empty) for over-constrained multi-type queries.
+CLIMATE_RECONSTRUCTIONS = "3"
 
 
 def _f(v) -> float | None:
@@ -124,12 +125,14 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     limit = min(10, max(1, settings.occurrence_limit // 5 or 10))
     q: dict[str, Any] = {
         "dataPublisher": "NOAA",
-        "dataTypeId": DEFAULT_DATA_TYPES,
+        "dataTypeId": CLIMATE_RECONSTRUCTIONS,
         "limit": limit,
     }
+    # Spatial paleoclimate search is the useful path; species names rarely hit
+    # climate-reconstruction metadata, and combining both often yields HTTP 204.
     if params.lat is not None and params.lng is not None:
         q.update(_bbox(params.lat, params.lng, params.radius_km or settings.default_radius_km))
-    if params.taxon:
+    elif params.taxon:
         q["searchText"] = params.taxon
     # age_max/min are Ma → years BP for NOAA time filters
     if params.age_max is not None or params.age_min is not None:
@@ -146,10 +149,14 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
 
     async with httpx.AsyncClient(timeout=settings.adapter_timeout_sec) as client:
         resp = await client.get(NOAA_SEARCH, params=q)
-        resp.raise_for_status()
-        payload = resp.json()
+        # NOAA returns 204 with an empty body when a search matches nothing
+        if resp.status_code == 204 or not resp.content:
+            studies_raw: list[dict[str, Any]] = []
+        else:
+            resp.raise_for_status()
+            payload = resp.json()
+            studies_raw = payload.get("study") or []
 
-    studies_raw = payload.get("study") or []
     studies = [_normalize_study(s) for s in studies_raw]
     return AdapterResult(
         provider="PALEOCLIMATE",
