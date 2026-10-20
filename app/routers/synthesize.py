@@ -209,7 +209,14 @@ async def synthesize(
         ("MINDAT", adapters.mindat.fetch_and_parse),
     ]
     gathered = await asyncio.gather(
-        *[run_adapter(name, partial(fn, params)) for name, fn in names],
+        *[
+            run_adapter(
+                name,
+                partial(fn, params),
+                timeout=settings.timeout_for(name),
+            )
+            for name, fn in names
+        ],
         return_exceptions=True,
     )
     results: dict[str, AdapterResult] = {}

@@ -18,6 +18,16 @@ services:
         value: "2"
       - key: ADAPTER_TIMEOUT_SEC
         value: "3.5"
+      - key: ADAPTER_TIMEOUT_GBIF_SEC
+        value: "25"
+      - key: ADAPTER_TIMEOUT_MINDAT_SEC
+        value: "30"
+      - key: ADAPTER_TIMEOUT_NEOTOMA_SEC
+        value: "25"
+      - key: ADAPTER_TIMEOUT_IDIGBIO_SEC
+        value: "20"
+      - key: ADAPTER_TIMEOUT_MORPHOSOURCE_SEC
+        value: "20"
       - key: CACHE_TTL_SEC
         value: "86400"
       - key: OCCURRENCE_LIMIT

@@ -131,7 +131,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                         "format": "json",
                     },
                     headers=headers,
-                    timeout=min(settings.adapter_timeout_sec, 8.0),
+                    timeout=min(settings.timeout_for("MINDAT"), 12.0),
                 )
                 loc_ids: list[int] = []
                 if detail.status_code < 400:
@@ -150,7 +150,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                             "format": "json",
                         },
                         headers=headers,
-                        timeout=min(settings.adapter_timeout_sec, 8.0),
+                        timeout=min(settings.timeout_for("MINDAT"), 12.0),
                     )
                     if loc_resp.status_code < 400:
                         mineral_name = minerals[0].get("name")

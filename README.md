@@ -89,7 +89,7 @@ Repo is Render-ready (`render.yaml` + `Procfile`). This does **not** create a Re
    - **Build:** `pip install -r requirements.txt`
    - **Start:** `gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
    - **Health check:** `/api/v1/`
-4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`, `CROSSREF_MAILTO`, `OPENALEX_MAILTO`, `OPENALEX_API_KEY`, `MINDAT_API_KEY` (or mount as a Secret File).
+4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC` (default), `ADAPTER_TIMEOUT_GBIF_SEC` / `_MINDAT_SEC` / `_NEOTOMA_SEC` / `_IDIGBIO_SEC` / `_MORPHOSOURCE_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`, `CROSSREF_MAILTO`, `OPENALEX_MAILTO`, `OPENALEX_API_KEY`, `MINDAT_API_KEY` (or mount as a Secret File).
 
 Free tier: the service may sleep when idle; the first request after a pause can take ~30–60 seconds. Synthesize fans out to several upstream APIs, so cold starts plus a full query can feel slow.
 

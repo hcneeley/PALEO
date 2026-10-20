@@ -17,8 +17,10 @@ def get_client() -> httpx.AsyncClient:
 
 async def startup_http_client() -> httpx.AsyncClient:
     global _client
+    # Default client timeout covers the slowest adapter; callers may still
+    # pass a shorter per-request timeout.
     _client = httpx.AsyncClient(
-        timeout=httpx.Timeout(settings.adapter_timeout_sec),
+        timeout=httpx.Timeout(settings.max_adapter_timeout_sec()),
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         headers={"User-Agent": "UPAE/0.1 (https://github.com/hcneeley/upae)"},
         follow_redirects=True,
