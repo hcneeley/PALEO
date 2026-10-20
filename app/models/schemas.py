@@ -77,6 +77,8 @@ class OccurrenceProperties(BaseModel):
     dwc_eventDate: str | None = None
     max_ma: float | None = None
     min_ma: float | None = None
+    paleolat: float | None = None
+    paleolng: float | None = None
 
 
 class OccurrenceFeature(BaseModel):
@@ -135,6 +137,7 @@ class Media3dBlock(BaseModel):
 
 
 class LiteratureRecord(BaseModel):
+    provider: str | None = None
     doi: str | None = None
     title: str | None = None
     authors: list[str] = Field(default_factory=list)
@@ -142,6 +145,7 @@ class LiteratureRecord(BaseModel):
     container_title: str | None = None
     type: str | None = None
     url: str | None = None
+    cited_by_count: int | None = None
 
 
 class MineralRecord(BaseModel):

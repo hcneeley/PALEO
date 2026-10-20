@@ -8,6 +8,7 @@ from . import (
     mindat,
     morphosource,
     neotoma,
+    openalex,
     paleoclimate,
     pbdb,
 )
@@ -21,5 +22,6 @@ __all__ = [
     "gbif",
     "paleoclimate",
     "crossref",
+    "openalex",
     "mindat",
 ]

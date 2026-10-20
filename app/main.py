@@ -47,8 +47,10 @@ def index() -> dict:
             "GBIF",
             "PALEOCLIMATE",
             "CROSSREF",
+            "OPENALEX",
             "MINDAT",
         ],
         "stub_adapters": [],
         "mindat_note": "Requires MINDAT_API_KEY (env, key.env, or Render secret file)",
+        "openalex_note": "Optional OPENALEX_API_KEY / OPENALEX_MAILTO (mailto falls back to CROSSREF_MAILTO)",
     }

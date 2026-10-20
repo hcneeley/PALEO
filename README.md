@@ -2,7 +2,7 @@
 
 Async federated gateway that synthesizes paleontology, geology, and related upstream APIs into a single REST payload.
 
-**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB, Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, Crossref, and Mindat (key required); in-memory 24h cache (no Redis/PostGIS yet).
+**MVP** under [`hcneeley/upae`](https://github.com/hcneeley/upae): live adapters for PBDB (incl. paleocoordinates), Macrostrat, Neotoma, iDigBio, MorphoSource, GBIF, NOAA NCEI Paleo Search, Crossref, OpenAlex, and Mindat (key required); in-memory 24h cache (no Redis/PostGIS yet).
 
 ## Quick start
 
@@ -34,7 +34,7 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 
 | Source | Role |
 |--------|------|
-| **PBDB** | Fossil occurrences → GeoJSON features |
+| **PBDB** | Fossil occurrences → GeoJSON features (incl. `paleolat` / `paleolng`) |
 | **Macrostrat** | Stratigraphic units at lat/lng |
 | **Neotoma** | Quaternary paleoecology occurrences |
 | **iDigBio** | Museum specimen vouchers |
@@ -42,15 +42,24 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 | **GBIF** | Extant occurrence search → GeoJSON features |
 | **NCEI Paleo Search** | NOAA paleoclimate / paleoenvironmental studies → `paleoclimate_proxy` |
 | **Crossref** | Bibliographic works → `literature` |
+| **OpenAlex** | Relevance-ranked works → `literature` (merged with Crossref, DOI-deduped) |
 | **Mindat** | Minerals / geomaterials + localities → `minerals` (needs API key) |
 
 ### Mindat
 
 Uses OpenMindat [`geomaterials-search`](https://api.mindat.org/v1/schema/redoc/) with `q=<taxon>` (mineral name) and optional localities for the top hit. Requires `MINDAT_API_KEY` (or a Render secret file named `MINDAT_API_KEY`). Without a key, the adapter reports `skipped` and leaves `minerals` empty.
 
+### OpenAlex
+
+Uses [`GET https://api.openalex.org/works`](https://docs.openalex.org/api-entities/works/search-works) with `search=<taxon>` and `filter=type:article|type:review`. Set `OPENALEX_MAILTO` (falls back to `CROSSREF_MAILTO`) and optionally `OPENALEX_API_KEY` for a higher request budget. Results merge into `literature` ahead of Crossref, deduped by DOI; includes `cited_by_count` and `provider`.
+
 ### Crossref
 
 Uses [`GET https://api.crossref.org/works`](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) with `query=<taxon>` and `filter=type:journal-article`. Set `CROSSREF_MAILTO` for the [polite pool](https://www.crossref.org/documentation/retrieve-metadata/rest-api/). Results map DOI, title, authors, year, container title, and URL into `literature`.
+
+### PBDB paleocoordinates
+
+Occurrence requests use `show=coords,attr,class,paleoloc`. Compact fields `pla` / `pln` are exposed as `properties.paleolat` / `properties.paleolng` on PBDB features (plate-reconstructed paleolocation when PBDB provides it).
 
 ### NCEI Paleo Search (NOAA)
 
@@ -80,7 +89,7 @@ Repo is Render-ready (`render.yaml` + `Procfile`). This does **not** create a Re
    - **Build:** `pip install -r requirements.txt`
    - **Start:** `gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
    - **Health check:** `/api/v1/`
-4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`, `CROSSREF_MAILTO`, `MINDAT_API_KEY` (or mount as a Secret File).
+4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`, `CROSSREF_MAILTO`, `OPENALEX_MAILTO`, `OPENALEX_API_KEY`, `MINDAT_API_KEY` (or mount as a Secret File).
 
 Free tier: the service may sleep when idle; the first request after a pause can take ~30–60 seconds. Synthesize fans out to several upstream APIs, so cold starts plus a full query can feel slow.
 
@@ -106,5 +115,6 @@ https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&
 - [GBIF OpenAPI](https://techdocs.gbif.org/en/openapi/)
 - [NCEI Paleo Search API](https://www.ncei.noaa.gov/access/paleo-search/api)
 - [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
+- [OpenAlex works search](https://docs.openalex.org/api-entities/works/search-works)
 - [OpenMindat API](https://api.mindat.org/v1/schema/redoc/) · [Get a Mindat API key](https://www.mindat.org/a/how_to_get_my_mindat_api_key)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)

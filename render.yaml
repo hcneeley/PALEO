@@ -24,5 +24,9 @@ services:
         value: "50"
       - key: CROSSREF_MAILTO
         sync: false
+      - key: OPENALEX_MAILTO
+        sync: false
+      - key: OPENALEX_API_KEY
+        sync: false
       - key: MINDAT_API_KEY
         sync: false

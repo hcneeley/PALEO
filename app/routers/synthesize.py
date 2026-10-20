@@ -67,7 +67,18 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     climate_raw = (results["PALEOCLIMATE"].data or {}).get("proxy") or {}
     paleoclimate = PaleoclimateProxy.model_validate(climate_raw)
 
-    literature_raw = (results["CROSSREF"].data or {}).get("literature") or []
+    # OpenAlex first (relevance), then Crossref; dedupe by DOI
+    literature_raw: list[Any] = []
+    seen_doi: set[str] = set()
+    for key in ("OPENALEX", "CROSSREF"):
+        adapter = results.get(key)
+        for row in ((adapter.data or {}).get("literature") or [] if adapter else []):
+            doi = (row.get("doi") or "").strip().lower()
+            if doi and doi in seen_doi:
+                continue
+            if doi:
+                seen_doi.add(doi)
+            literature_raw.append(row)
     literature = [LiteratureRecord.model_validate(x) for x in literature_raw]
 
     mindat = results.get("MINDAT")
@@ -167,6 +178,7 @@ async def synthesize(
         ("GBIF", adapters.gbif.fetch_and_parse),
         ("PALEOCLIMATE", adapters.paleoclimate.fetch_and_parse),
         ("CROSSREF", adapters.crossref.fetch_and_parse),
+        ("OPENALEX", adapters.openalex.fetch_and_parse),
         ("MINDAT", adapters.mindat.fetch_and_parse),
     ]
     gathered = await asyncio.gather(

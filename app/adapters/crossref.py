@@ -59,6 +59,7 @@ def _normalize(item: dict[str, Any]) -> dict[str, Any]:
     containers = item.get("container-title") or []
     doi = item.get("DOI")
     return {
+        "provider": "Crossref",
         "doi": doi,
         "title": _strip_html(titles[0] if titles else None),
         "authors": _authors(item),
@@ -66,6 +67,7 @@ def _normalize(item: dict[str, Any]) -> dict[str, Any]:
         "container_title": _strip_html(containers[0] if containers else None),
         "type": item.get("type"),
         "url": item.get("URL") or (f"https://doi.org/{doi}" if doi else None),
+        "cited_by_count": None,
     }
 
 

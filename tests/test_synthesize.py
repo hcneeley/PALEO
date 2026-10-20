@@ -19,6 +19,7 @@ MS_URL = "https://www.morphosource.org/api/media"
 GBIF_URL = "https://api.gbif.org/v1/occurrence/search"
 NOAA_URL = "https://www.ncei.noaa.gov/access/paleo-search/study/search.json"
 CROSSREF_URL = "https://api.crossref.org/works"
+OPENALEX_URL = "https://api.openalex.org/works"
 MINDAT_SEARCH = "https://api.mindat.org/v1/geomaterials-search/"
 MINDAT_DETAIL = "https://api.mindat.org/v1/geomaterials/1/"
 MINDAT_LOCS = "https://api.mindat.org/v1/localities/"
@@ -35,6 +36,8 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
                         "tna": "Hadrosaurus foulkii",
                         "lat": 34.55,
                         "lng": -78.45,
+                        "pla": 30.1,
+                        "pln": -75.2,
                         "eag": 83.6,
                         "lag": 72.1,
                     }
@@ -195,6 +198,31 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
+    router.get(OPENALEX_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "meta": {"count": 1},
+                "results": [
+                    {
+                        "id": "https://openalex.org/W1",
+                        "doi": "https://doi.org/10.9999/openalex",
+                        "display_name": "OpenAlex paper on Hadrosaurus",
+                        "publication_year": 2021,
+                        "type": "article",
+                        "cited_by_count": 12,
+                        "authorships": [
+                            {"author": {"display_name": "Alex Author"}}
+                        ],
+                        "primary_location": {
+                            "landing_page_url": "https://doi.org/10.9999/openalex",
+                            "source": {"display_name": "Paleo Journal"},
+                        },
+                    }
+                ],
+            },
+        )
+    )
     router.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(
             200,
@@ -269,10 +297,19 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["paleoclimate_proxy"]["studies"][0]["study_id"] == "9101"
     assert body["paleoclimate_proxy"]["model_source"] == "NCEI Paleo Search (NOAA)"
     assert providers["CROSSREF"] == "ok"
-    assert len(body["literature"]) == 1
-    assert body["literature"][0]["doi"] == "10.1234/example"
-    assert "Canis dirus" in body["literature"][0]["title"]
-    assert body["literature"][0]["authors"] == ["Jane Doe"]
+    assert providers["OPENALEX"] == "ok"
+    assert len(body["literature"]) == 2
+    assert body["literature"][0]["doi"] == "10.9999/openalex"
+    assert body["literature"][0]["provider"] == "OpenAlex"
+    assert body["literature"][0]["cited_by_count"] == 12
+    assert body["literature"][1]["doi"] == "10.1234/example"
+    assert "Canis dirus" in body["literature"][1]["title"]
+    assert body["literature"][1]["authors"] == ["Jane Doe"]
+    pbdb_feat = next(
+        f for f in body["occurrences"]["features"] if f["properties"]["database_source"] == "PBDB"
+    )
+    assert pbdb_feat["properties"]["paleolat"] == 30.1
+    assert pbdb_feat["properties"]["paleolng"] == -75.2
     assert providers["MINDAT"] == "ok"
     assert body["minerals"]["mineral_count"] == 1
     assert body["minerals"]["minerals"][0]["name"] == "Quartz"
@@ -301,6 +338,9 @@ def test_adapter_failure_still_200(client, monkeypatch):
         return_value=httpx.Response(
             200, json={"status": "ok", "message": {"total-results": 0, "items": []}}
         )
+    )
+    respx.get(OPENALEX_URL).mock(
+        return_value=httpx.Response(200, json={"meta": {"count": 0}, "results": []})
     )
     respx.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(200, json={"results": []})

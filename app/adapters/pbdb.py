@@ -78,6 +78,9 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         if lat is not None and lng is not None:
             geometry = {"type": "Point", "coordinates": [lng, lat]}
         max_ma, min_ma = _f(rec.get("eag")), _f(rec.get("lag"))
+        # Compact: pla/pln; verbose: paleolat/paleolng (show=paleoloc)
+        paleolat = _f(rec.get("pla") if rec.get("pla") is not None else rec.get("paleolat"))
+        paleolng = _f(rec.get("pln") if rec.get("pln") is not None else rec.get("paleolng"))
         event = None
         if max_ma is not None:
             mid = (max_ma + (min_ma or max_ma)) / 2.0
@@ -94,6 +97,8 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                     "dwc_eventDate": event,
                     "max_ma": max_ma,
                     "min_ma": min_ma,
+                    "paleolat": paleolat,
+                    "paleolng": paleolng,
                 },
             }
         )
