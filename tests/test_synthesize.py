@@ -223,28 +223,25 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
-    router.get(MINDAT_SEARCH).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "results": [
-                    {
-                        "id": 1,
-                        "name": "Quartz",
-                        "mindat_formula": "SiO2",
-                        "csystem": "Hexagonal",
-                        "hmin": 7,
-                        "hmax": 7,
-                        "ima_status": ["APPROVED"],
-                    }
-                ]
-            },
-        )
+    router.post("https://api.mindat.org/v1/geomin-point/").mock(
+        return_value=httpx.Response(200, json={"1": [10, 11]})
+    )
+    router.post("https://api.mindat.org/v1/geoloc-point/").mock(
+        return_value=httpx.Response(200, json=[10, 11])
     )
     router.get(url__regex=r"https://api\.mindat\.org/v1/geomaterials/\d+/").mock(
         return_value=httpx.Response(
             200,
-            json={"id": 1, "name": "Quartz", "locality": [10, 11]},
+            json={
+                "id": 1,
+                "name": "Quartz",
+                "mindat_formula": "SiO2",
+                "csystem": "Hexagonal",
+                "hmin": 7,
+                "hmax": 7,
+                "ima_status": ["APPROVED"],
+                "locality": [10, 11],
+            },
         )
     )
     router.get(MINDAT_LOCS).mock(
@@ -262,6 +259,9 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
                 ]
             },
         )
+    )
+    router.get(MINDAT_SEARCH).mock(
+        return_value=httpx.Response(200, json={"results": []})
     )
 
 
@@ -314,6 +314,8 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["minerals"]["mineral_count"] == 1
     assert body["minerals"]["minerals"][0]["name"] == "Quartz"
     assert body["minerals"]["locality_count"] == 1
+    assert body["minerals"]["link_mode"] == "spatial"
+    assert body["minerals"]["linked_taxon"] == "Hadrosaurus"
 
 
 @respx.mock
@@ -341,6 +343,12 @@ def test_adapter_failure_still_200(client, monkeypatch):
     )
     respx.get(OPENALEX_URL).mock(
         return_value=httpx.Response(200, json={"meta": {"count": 0}, "results": []})
+    )
+    respx.post("https://api.mindat.org/v1/geomin-point/").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.post("https://api.mindat.org/v1/geoloc-point/").mock(
+        return_value=httpx.Response(200, json=[])
     )
     respx.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(200, json={"results": []})

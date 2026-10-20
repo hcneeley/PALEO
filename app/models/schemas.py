@@ -180,6 +180,7 @@ class MineralRecord(BaseModel):
     hardness_min: OptFloat = None
     hardness_max: OptFloat = None
     url: str | None = None
+    link_mode: str | None = None  # spatial | name
 
 
 class MineralLocality(BaseModel):
@@ -191,6 +192,8 @@ class MineralLocality(BaseModel):
     lon: OptFloat = None
     mineral: str | None = None
     url: str | None = None
+    link_mode: str | None = None
+    distance_km: OptFloat = None
 
 
 class MineralsBlock(BaseModel):
@@ -199,6 +202,11 @@ class MineralsBlock(BaseModel):
     minerals: list[MineralRecord] = Field(default_factory=list)
     localities: list[MineralLocality] = Field(default_factory=list)
     status: str | None = None
+    link_mode: str | None = None  # spatial | name
+    linked_taxon: str | None = None
+    link_lat: OptFloat = None
+    link_lng: OptFloat = None
+    link_radius_km: OptFloat = None
 
 
 class AdapterDiagnostic(BaseModel):

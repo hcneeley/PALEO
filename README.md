@@ -47,7 +47,13 @@ Response sections: `geology`, `occurrences` (GeoJSON FeatureCollection), `specim
 
 ### Mindat
 
-Uses OpenMindat [`geomaterials-search`](https://api.mindat.org/v1/schema/redoc/) with `q=<taxon>` (mineral name) and optional localities for the top hit. Requires `MINDAT_API_KEY` (or a Render secret file named `MINDAT_API_KEY`). Without a key, the adapter reports `skipped` and leaves `minerals` empty.
+Links minerals to taxonomic queries **by place**, not by name:
+
+- With `lat`/`lng`: [`geomin-point`](https://api.mindat.org/v1/schema/redoc/) / `geoloc-point` within `radius_km` → minerals & localities near the search area (`minerals.link_mode: spatial`).
+- Taxon only (no coordinates): after PBDB/GBIF/Neotoma return, uses the occurrence centroid for the same spatial join when possible.
+- Mineral-name queries (no useful coords): falls back to `geomaterials-search`.
+
+Requires `MINDAT_API_KEY`. Without a key, the adapter reports `skipped`.
 
 ### OpenAlex
 

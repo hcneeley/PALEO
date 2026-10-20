@@ -3,18 +3,22 @@
 Docs: https://api.mindat.org/v1/schema/redoc/
 Patterns: https://github.com/ChuBL/How-to-Use-Mindat-API
 
+Ties minerals to taxonomic queries by **place**:
+  - With lat/lng: POST geomin-point / geoloc-point within radius_km
+  - Name search only when no coordinates (mineral/geomaterial queries)
+
 Requires MINDAT_API_KEY (env, key.env, or Render secret file).
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import httpx
 
-from ..http import get_client
-
 from ..config import settings
+from ..http import get_client
 from ..secrets import mindat_api_key
 from .base import AdapterResult, QueryParams
 
@@ -34,7 +38,7 @@ def _results(data: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _normalize_mineral(rec: dict[str, Any]) -> dict[str, Any]:
+def _normalize_mineral(rec: dict[str, Any], *, link_mode: str | None = None) -> dict[str, Any]:
     mid = rec.get("id")
     return {
         "provider": "Mindat",
@@ -46,10 +50,16 @@ def _normalize_mineral(rec: dict[str, Any]) -> dict[str, Any]:
         "hardness_min": rec.get("hmin"),
         "hardness_max": rec.get("hmax"),
         "url": f"https://www.mindat.org/min-{mid}.html" if mid is not None else None,
+        "link_mode": link_mode,
     }
 
 
-def _normalize_locality(rec: dict[str, Any], mineral_name: str | None = None) -> dict[str, Any]:
+def _normalize_locality(
+    rec: dict[str, Any],
+    mineral_name: str | None = None,
+    *,
+    link_mode: str | None = None,
+) -> dict[str, Any]:
     lid = rec.get("id")
     lat, lon = rec.get("latitude"), rec.get("longitude")
     try:
@@ -68,24 +78,233 @@ def _normalize_locality(rec: dict[str, Any], mineral_name: str | None = None) ->
         "lon": lon_f,
         "mineral": mineral_name,
         "url": f"https://www.mindat.org/loc-{lid}.html" if lid is not None else None,
+        "link_mode": link_mode,
     }
 
 
-async def fetch_and_parse(params: QueryParams) -> AdapterResult:
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _ids(values: Any) -> list[int]:
+    out: list[int] = []
+    if isinstance(values, dict):
+        # geomin-point: {mineral_id: [locality_ids]}
+        for k in values.keys():
+            if str(k).isdigit():
+                out.append(int(k))
+        return out
+    if isinstance(values, list):
+        for x in values:
+            if isinstance(x, int) or (isinstance(x, str) and x.isdigit()):
+                out.append(int(x))
+    return out
+
+
+def _locality_ids_from_geomin(payload: Any) -> list[int]:
+    seen: list[int] = []
+    if not isinstance(payload, dict):
+        return seen
+    for locs in payload.values():
+        if not isinstance(locs, list):
+            continue
+        for x in locs:
+            if isinstance(x, int) or (isinstance(x, str) and str(x).isdigit()):
+                i = int(x)
+                if i not in seen:
+                    seen.append(i)
+    return seen
+
+
+async def _hydrate_minerals(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    mineral_ids: list[int],
+    *,
+    link_mode: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    minerals: list[dict[str, Any]] = []
+    for mid in mineral_ids[:limit]:
+        try:
+            resp = await client.get(
+                MINDAT_BASE + f"geomaterials/{mid}/",
+                params={"fields": MINERAL_FIELDS, "format": "json"},
+                headers=headers,
+                timeout=min(settings.timeout_for("MINDAT"), 8.0),
+            )
+            if resp.status_code < 400:
+                body = resp.json()
+                rows = _results(body) or ([body] if isinstance(body, dict) else [])
+                if rows:
+                    minerals.append(_normalize_mineral(rows[0], link_mode=link_mode))
+        except httpx.HTTPError:
+            continue
+    return minerals
+
+
+async def _hydrate_localities(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    loc_ids: list[int],
+    *,
+    link_mode: str,
+    limit: int,
+    origin: tuple[float, float] | None = None,
+) -> list[dict[str, Any]]:
+    if not loc_ids:
+        return []
+    try:
+        resp = await client.get(
+            MINDAT_BASE + "localities/",
+            params={
+                "id__in": ",".join(str(i) for i in loc_ids[:limit]),
+                "fields": "id,txt,latitude,longitude,country",
+                "page_size": min(limit, 50),
+                "page": 1,
+                "format": "json",
+            },
+            headers=headers,
+            timeout=min(settings.timeout_for("MINDAT"), 12.0),
+        )
+        if resp.status_code >= 400:
+            return []
+        rows = _results(resp.json())
+    except httpx.HTTPError:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for r in rows[:limit]:
+        loc = _normalize_locality(r, link_mode=link_mode)
+        if origin and loc.get("lat") is not None and loc.get("lon") is not None:
+            loc["distance_km"] = round(
+                _haversine_km(origin[0], origin[1], float(loc["lat"]), float(loc["lon"])),
+                2,
+            )
+        out.append(loc)
+    if origin:
+        out.sort(key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else 1e12)
+    return out
+
+
+async def fetch_spatial(
+    params: QueryParams,
+    *,
+    lat: float | None = None,
+    lng: float | None = None,
+) -> AdapterResult:
+    """Mindat minerals/localities near a point — used to link taxa by shared place."""
     key = mindat_api_key()
     if not key:
         return AdapterResult(
             provider="MINDAT",
             status="skipped",
             error="MINDAT_API_KEY not configured",
-            data={"minerals": [], "localities": []},
+            data={"minerals": [], "localities": [], "link_mode": "spatial"},
+        )
+    lat = params.lat if lat is None else lat
+    lng = params.lng if lng is None else lng
+    if lat is None or lng is None:
+        return AdapterResult(
+            provider="MINDAT",
+            status="skipped",
+            error="lat/lng required for spatial Mindat link",
+            data={"minerals": [], "localities": [], "link_mode": "spatial"},
+        )
+
+    headers = {
+        "Authorization": f"Token {key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    limit = min(settings.occurrence_limit, 20)
+    radius = params.radius_km or settings.default_radius_km
+    # Mindat expects distance like "50km"
+    distance = f"{max(1, int(round(radius)))}km"
+    body = {"point": {"lat": float(lat), "lon": float(lng)}, "distance": distance}
+    client = get_client()
+
+    minerals: list[dict[str, Any]] = []
+    localities: list[dict[str, Any]] = []
+    mineral_ids: list[int] = []
+    loc_ids: list[int] = []
+
+    try:
+        geomin = await client.post(
+            MINDAT_BASE + "geomin-point/",
+            json=body,
+            headers=headers,
+            timeout=min(settings.timeout_for("MINDAT"), 20.0),
+        )
+        if geomin.status_code < 400:
+            payload = geomin.json()
+            mineral_ids = _ids(payload)[:limit]
+            loc_ids = _locality_ids_from_geomin(payload)[:limit]
+    except httpx.HTTPError:
+        mineral_ids = []
+
+    if not loc_ids:
+        try:
+            geoloc = await client.post(
+                MINDAT_BASE + "geoloc-point/",
+                json=body,
+                headers=headers,
+                timeout=min(settings.timeout_for("MINDAT"), 20.0),
+            )
+            if geoloc.status_code < 400:
+                loc_ids = _ids(geoloc.json())[:limit]
+        except httpx.HTTPError:
+            loc_ids = []
+
+    if mineral_ids:
+        minerals = await _hydrate_minerals(
+            client, headers, mineral_ids, link_mode="spatial", limit=limit
+        )
+    localities = await _hydrate_localities(
+        client,
+        headers,
+        loc_ids,
+        link_mode="spatial",
+        limit=limit,
+        origin=(float(lat), float(lng)),
+    )
+
+    return AdapterResult(
+        provider="MINDAT",
+        status="ok",
+        data={
+            "minerals": minerals,
+            "localities": localities,
+            "link_mode": "spatial",
+            "linked_taxon": params.taxon,
+            "link_lat": lat,
+            "link_lng": lng,
+            "link_radius_km": radius,
+        },
+    )
+
+
+async def fetch_by_name(params: QueryParams) -> AdapterResult:
+    """Direct geomaterial name search (for mineral queries, not fossil taxa)."""
+    key = mindat_api_key()
+    if not key:
+        return AdapterResult(
+            provider="MINDAT",
+            status="skipped",
+            error="MINDAT_API_KEY not configured",
+            data={"minerals": [], "localities": [], "link_mode": "name"},
         )
     if not params.taxon:
         return AdapterResult(
             provider="MINDAT",
             status="skipped",
-            error="taxon required (used as mineral / geomaterial query)",
-            data={"minerals": [], "localities": []},
+            error="taxon required for name search",
+            data={"minerals": [], "localities": [], "link_mode": "name"},
         )
 
     headers = {
@@ -95,9 +314,8 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     limit = min(settings.occurrence_limit, 25)
     minerals: list[dict[str, Any]] = []
     localities: list[dict[str, Any]] = []
-
     client = get_client()
-    # 1) geomaterials-search
+
     try:
         resp = await client.get(
             MINDAT_BASE + "geomaterials-search/",
@@ -105,31 +323,35 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             headers=headers,
         )
         if resp.status_code < 400:
-            minerals = [_normalize_mineral(r) for r in _results(resp.json())[:limit]]
+            minerals = [
+                _normalize_mineral(r, link_mode="name")
+                for r in _results(resp.json())[:limit]
+            ]
     except httpx.HTTPError:
         minerals = []
 
-    # 2) fallback minerals-ima
     if not minerals:
-        resp = await client.get(
-            MINDAT_BASE + "minerals-ima/",
-            params={"q": params.taxon, "page": 1, "page_size": limit, "format": "json"},
-            headers=headers,
-        )
-        resp.raise_for_status()
-        minerals = [_normalize_mineral(r) for r in _results(resp.json())[:limit]]
+        try:
+            resp = await client.get(
+                MINDAT_BASE + "minerals-ima/",
+                params={"q": params.taxon, "page": 1, "page_size": limit, "format": "json"},
+                headers=headers,
+            )
+            if resp.status_code < 400:
+                minerals = [
+                    _normalize_mineral(r, link_mode="name")
+                    for r in _results(resp.json())[:limit]
+                ]
+        except httpx.HTTPError:
+            minerals = []
 
-    # 3) localities for top hit (cap IDs — common minerals like quartz can hang on full expand)
     if minerals:
         mid = (minerals[0].get("mineral_id") or "").split(":")[-1]
         if mid.isdigit():
             try:
                 detail = await client.get(
                     MINDAT_BASE + f"geomaterials/{mid}/",
-                    params={
-                        "fields": "id,name,locality",
-                        "format": "json",
-                    },
+                    params={"fields": "id,name,locality", "format": "json"},
                     headers=headers,
                     timeout=min(settings.timeout_for("MINDAT"), 12.0),
                 )
@@ -140,29 +362,40 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                     raw_ids = (rows[0].get("locality") if rows else None) or []
                     loc_ids = [int(x) for x in raw_ids if str(x).isdigit()][: min(limit, 10)]
                 if loc_ids:
-                    loc_resp = await client.get(
-                        MINDAT_BASE + "localities/",
-                        params={
-                            "id__in": ",".join(str(i) for i in loc_ids),
-                            "fields": "id,txt,latitude,longitude,country",
-                            "page_size": min(limit, 10),
-                            "page": 1,
-                            "format": "json",
-                        },
-                        headers=headers,
-                        timeout=min(settings.timeout_for("MINDAT"), 12.0),
+                    localities = await _hydrate_localities(
+                        client,
+                        headers,
+                        loc_ids,
+                        link_mode="name",
+                        limit=min(limit, 10),
                     )
-                    if loc_resp.status_code < 400:
-                        mineral_name = minerals[0].get("name")
-                        localities = [
-                            _normalize_locality(r, mineral_name)
-                            for r in _results(loc_resp.json())[:limit]
-                        ]
+                    name = minerals[0].get("name")
+                    for loc in localities:
+                        loc["mineral"] = name
             except httpx.HTTPError:
                 localities = []
 
     return AdapterResult(
         provider="MINDAT",
         status="ok",
-        data={"minerals": minerals, "localities": localities},
+        data={
+            "minerals": minerals,
+            "localities": localities,
+            "link_mode": "name",
+            "linked_taxon": params.taxon,
+        },
+    )
+
+
+async def fetch_and_parse(params: QueryParams) -> AdapterResult:
+    """Prefer spatial link when coordinates exist; otherwise mineral name search."""
+    if params.lat is not None and params.lng is not None:
+        return await fetch_spatial(params)
+    if params.taxon:
+        return await fetch_by_name(params)
+    return AdapterResult(
+        provider="MINDAT",
+        status="skipped",
+        error="Provide lat/lng (spatial link to taxon area) or a mineral name",
+        data={"minerals": [], "localities": []},
     )

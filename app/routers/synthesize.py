@@ -109,8 +109,9 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     literature = _safe_models(LiteratureRecord, literature_raw)
 
     mindat = results.get("MINDAT")
-    minerals_raw = (mindat.data or {}).get("minerals") or [] if mindat else []
-    localities_raw = (mindat.data or {}).get("localities") or [] if mindat else []
+    mindat_data = (mindat.data or {}) if mindat else {}
+    minerals_raw = mindat_data.get("minerals") or []
+    localities_raw = mindat_data.get("localities") or []
     mindat_status = mindat.status if mindat else "skipped"
     minerals_block = MineralsBlock(
         mineral_count=len(minerals_raw),
@@ -118,6 +119,11 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         minerals=_safe_models(MineralRecord, minerals_raw),
         localities=_safe_models(MineralLocality, localities_raw),
         status=None if mindat_status == "ok" else mindat_status,
+        link_mode=mindat_data.get("link_mode"),
+        linked_taxon=mindat_data.get("linked_taxon") or params.taxon,
+        link_lat=mindat_data.get("link_lat"),
+        link_lng=mindat_data.get("link_lng"),
+        link_radius_km=mindat_data.get("link_radius_km"),
     )
 
     gts = normalize_age_bounds(params.age_min, params.age_max)
@@ -227,6 +233,50 @@ async def synthesize(
             )
         else:
             results[item.provider] = item
+
+    # If the query had no lat/lng but fossil occurrences do, spatially link Mindat
+    # to the taxon's occurrence centroid (place bridge taxa ↔ minerals).
+    mindat = results.get("MINDAT")
+    need_spatial = (
+        (params.lat is None or params.lng is None)
+        and params.taxon
+        and (
+            mindat is None
+            or mindat.status != "ok"
+            or not (mindat.data or {}).get("minerals")
+            or (mindat.data or {}).get("link_mode") == "name"
+        )
+    )
+    if need_spatial:
+        coords: list[tuple[float, float]] = []
+        for src in ("PBDB", "NEOTOMA", "GBIF"):
+            for feat in (results.get(src).data or {}).get("features") or [] if results.get(src) else []:
+                geom = feat.get("geometry") or {}
+                c = geom.get("coordinates")
+                if isinstance(c, list) and len(c) >= 2:
+                    try:
+                        coords.append((float(c[1]), float(c[0])))
+                    except (TypeError, ValueError):
+                        continue
+        if coords:
+            clat = sum(p[0] for p in coords) / len(coords)
+            clng = sum(p[1] for p in coords) / len(coords)
+            spatial_params = QueryParams(
+                lat=clat,
+                lng=clng,
+                radius_km=params.radius_km,
+                taxon=params.taxon,
+                age_min=params.age_min,
+                age_max=params.age_max,
+            )
+            spatial = await run_adapter(
+                "MINDAT",
+                partial(adapters.mindat.fetch_spatial, spatial_params),
+                timeout=settings.timeout_for("MINDAT"),
+            )
+            if spatial.status == "ok" and (spatial.data or {}).get("minerals"):
+                results["MINDAT"] = spatial
+
     elapsed_ms = (time.perf_counter() - t0) * 1000
     payload = _assemble(params, results, elapsed_ms=elapsed_ms, cache_status="MISS")
     cache.set(key, payload)
