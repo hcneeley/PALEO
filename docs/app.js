@@ -169,39 +169,58 @@
           .join("")}</ul>`
       : `<p class="empty">No Macrostrat units.</p>`;
 
-    const occRows = features
-      .slice(0, 40)
-      .map((f) => {
-        const p = f.properties || {};
-        const coords = f.geometry?.coordinates;
-        const where =
-          Array.isArray(coords) && coords.length >= 2
-            ? `${Number(coords[1]).toFixed(3)}, ${Number(coords[0]).toFixed(3)}`
-            : "—";
-        const paleo =
-          p.paleolat != null && p.paleolng != null
-            ? `${Number(p.paleolat).toFixed(2)}, ${Number(p.paleolng).toFixed(2)}`
-            : "—";
-        return `<tr>
-          <td>${esc(p.database_source)}</td>
-          <td>${esc(p.taxon_name || p.accepted_name || "—")}</td>
-          <td>${esc(where)}</td>
-          <td>${esc(paleo)}</td>
-          <td>${esc(p.max_ma ?? "—")}–${esc(p.min_ma ?? "—")}</td>
-        </tr>`;
-      })
+    const PREVIEW = 40;
+    const occRow = (f) => {
+      const p = f.properties || {};
+      const coords = f.geometry?.coordinates;
+      const where =
+        Array.isArray(coords) && coords.length >= 2
+          ? `${Number(coords[1]).toFixed(3)}, ${Number(coords[0]).toFixed(3)}`
+          : "—";
+      const paleo =
+        p.paleolat != null && p.paleolng != null
+          ? `${Number(p.paleolat).toFixed(2)}, ${Number(p.paleolng).toFixed(2)}`
+          : "—";
+      return `<tr>
+        <td>${esc(p.database_source)}</td>
+        <td>${esc(p.taxon_name || p.accepted_name || "—")}</td>
+        <td>${esc(where)}</td>
+        <td>${esc(paleo)}</td>
+        <td>${esc(p.max_ma ?? "—")}–${esc(p.min_ma ?? "—")}</td>
+      </tr>`;
+    };
+    const occPreview = features.slice(0, PREVIEW).map(occRow).join("");
+    const occAll = features.map(occRow).join("");
+    const browse = (data.occurrences?.browse_links || [])
+      .map(
+        (l) =>
+          `<a class="occ-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(
+            l.label || l.provider
+          )}</a>`
+      )
       .join("");
+    const viewAllApi = data.occurrences?.view_all_url
+      ? `<a class="occ-link" href="${esc(data.occurrences.view_all_url)}" target="_blank" rel="noopener">Full JSON response</a>`
+      : "";
 
     const occHtml = features.length
-      ? `<div class="table-wrap"><table>
+      ? `<div class="table-wrap" id="occ-preview"><table>
           <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
-          <tbody>${occRows}</tbody>
+          <tbody>${occPreview}</tbody>
         </table></div>
-        ${
-          features.length > 40
-            ? `<p class="sub">Showing 40 of ${features.length} occurrences.</p>`
-            : ""
-        }`
+        <div class="table-wrap" id="occ-all" hidden><table>
+          <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
+          <tbody>${occAll}</tbody>
+        </table></div>
+        <p class="occ-links">
+          ${
+            features.length > PREVIEW
+              ? `<button type="button" class="linkish" id="occ-expand">View all ${features.length} occurrences in this result</button>`
+              : `<span class="sub">Showing all ${features.length} occurrence(s) returned.</span>`
+          }
+          ${viewAllApi}
+          ${browse}
+        </p>`
       : `<p class="empty">No occurrences.</p>`;
 
     const specimenHtml = specimens.length
@@ -304,5 +323,14 @@
       block("Paleoclimate", `${data.paleoclimate_proxy?.study_count ?? 0} NOAA study(ies)`, climateHtml),
       block("Literature", `${literature.length} work(s)`, litHtml),
     ].join("");
+
+    const expandBtn = document.getElementById("occ-expand");
+    if (expandBtn) {
+      expandBtn.addEventListener("click", () => {
+        document.getElementById("occ-preview").hidden = true;
+        document.getElementById("occ-all").hidden = false;
+        expandBtn.hidden = true;
+      });
+    }
   }
 })();

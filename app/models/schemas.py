@@ -109,10 +109,22 @@ class OccurrenceFeature(BaseModel):
     properties: OccurrenceProperties
 
 
+class OccurrenceBrowseLink(BaseModel):
+    """Link to browse the full occurrence set beyond this response's cap."""
+
+    provider: str
+    label: str
+    url: str
+
+
 class OccurrencesBlock(BaseModel):
     type: str = "FeatureCollection"
     total_records: int = 0
     features: list[OccurrenceFeature] = Field(default_factory=list)
+    # Same synthesize URL — open for the full JSON FeatureCollection returned here
+    view_all_url: str | None = None
+    # Upstream portals for occurrences beyond UPAE's per-source limit
+    browse_links: list[OccurrenceBrowseLink] = Field(default_factory=list)
 
 
 class SpecimenRecord(BaseModel):

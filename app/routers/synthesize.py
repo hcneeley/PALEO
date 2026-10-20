@@ -6,8 +6,9 @@ import asyncio
 import time
 from functools import partial
 from typing import Any
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import ValidationError
 
 from .. import adapters
@@ -26,6 +27,7 @@ from ..models.schemas import (
     MineralLocality,
     MineralRecord,
     MineralsBlock,
+    OccurrenceBrowseLink,
     OccurrenceFeature,
     OccurrencesBlock,
     PaleoclimateProxy,
@@ -47,9 +49,47 @@ def _safe_models(model, rows: list) -> list:
     return out
 
 
+def _occurrence_browse_links(params: QueryParams) -> list[OccurrenceBrowseLink]:
+    """Upstream portals to browse the full occurrence catalogs for this query."""
+    links: list[OccurrenceBrowseLink] = []
+    taxon = (params.taxon or "").strip()
+    if taxon:
+        links.append(
+            OccurrenceBrowseLink(
+                provider="PBDB",
+                label="All PBDB occurrences",
+                url=(
+                    "https://paleobiodb.org/data1.2/occs/list.json?"
+                    + urlencode(
+                        {
+                            "base_name": taxon,
+                            "show": "coords,attr,class,paleoloc",
+                            "limit": 500,
+                        }
+                    )
+                ),
+            )
+        )
+        links.append(
+            OccurrenceBrowseLink(
+                provider="GBIF",
+                label="Browse all on GBIF",
+                url="https://www.gbif.org/occurrence/search?"
+                + urlencode({"q": taxon, "hasCoordinate": "true"}),
+            )
+        )
+        links.append(
+            OccurrenceBrowseLink(
+                provider="Neotoma",
+                label="Browse on Neotoma Explorer",
+                url="https://apps.neotomadb.org/explorer/?"
+                + urlencode({"taxonsearch": taxon}),
+            )
+        )
+    return links
 
 
-def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float, cache_status: str) -> dict:
+def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float, cache_status: str, view_all_url: str | None = None) -> dict:
     diagnostics = [r.diagnostic() for r in results.values()]
 
     macro = results.get("MACROSTRAT")
@@ -147,6 +187,8 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         occurrences=OccurrencesBlock(
             total_records=len(features),
             features=features,
+            view_all_url=view_all_url,
+            browse_links=_occurrence_browse_links(params),
         ),
         specimens=specimens,
         media_3d=media,
@@ -159,6 +201,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
 
 @router.get("/synthesize")
 async def synthesize(
+    request: Request,
     response: Response,
     lat: float | None = Query(None, description="Latitude (decimal degrees)"),
     lng: float | None = Query(None, description="Longitude (decimal degrees)"),
@@ -190,6 +233,10 @@ async def synthesize(
         response.headers["X-Cache"] = "HIT"
         out = dict(cached)
         out["cache_status"] = "HIT"
+        # Refresh self-link for this host/request
+        occ = dict(out.get("occurrences") or {})
+        occ["view_all_url"] = str(request.url)
+        out["occurrences"] = occ
         return out
 
     params = QueryParams(
@@ -278,7 +325,14 @@ async def synthesize(
                 results["MINDAT"] = spatial
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
-    payload = _assemble(params, results, elapsed_ms=elapsed_ms, cache_status="MISS")
+    view_all_url = str(request.url)
+    payload = _assemble(
+        params,
+        results,
+        elapsed_ms=elapsed_ms,
+        cache_status="MISS",
+        view_all_url=view_all_url,
+    )
     cache.set(key, payload)
     response.headers["X-Cache"] = "MISS"
     return payload

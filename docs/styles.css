@@ -398,3 +398,31 @@ th {
     align-items: stretch;
   }
 }
+
+.occ-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  align-items: center;
+  margin: 0.85rem 0 0;
+  font-size: 0.88rem;
+}
+
+.occ-link,
+button.linkish {
+  color: var(--mint);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.occ-link:hover,
+button.linkish:hover {
+  text-decoration: underline;
+  filter: none;
+  transform: none;
+}

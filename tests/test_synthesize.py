@@ -287,6 +287,8 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert r.headers.get("X-Cache") == "MISS"
     assert body["geology"]["macrostrat_units"][0]["unit_name"] == "Austin Chalk"
     assert body["occurrences"]["total_records"] >= 1
+    assert body["occurrences"]["view_all_url"]
+    assert any(l["provider"] == "PBDB" for l in body["occurrences"]["browse_links"])
     assert body["specimens"]["voucher_count"] == 1
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
