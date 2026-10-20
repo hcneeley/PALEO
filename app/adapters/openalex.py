@@ -80,8 +80,8 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         "search": params.taxon,
         "per_page": min(settings.occurrence_limit, 25),
         "mailto": mailto,
-        # Prefer research articles; still returns datasets if they dominate ranking
-        "filter": "type:article|type:review",
+        # OR values for one field: type:article|review (not type:article|type:review)
+        "filter": "type:article|review",
     }
     if api_key:
         q["api_key"] = api_key

@@ -51,7 +51,7 @@ Uses OpenMindat [`geomaterials-search`](https://api.mindat.org/v1/schema/redoc/)
 
 ### OpenAlex
 
-Uses [`GET https://api.openalex.org/works`](https://docs.openalex.org/api-entities/works/search-works) with `search=<taxon>` and `filter=type:article|type:review`. Set `OPENALEX_MAILTO` (falls back to `CROSSREF_MAILTO`) and optionally `OPENALEX_API_KEY` for a higher request budget. Results merge into `literature` ahead of Crossref, deduped by DOI; includes `cited_by_count` and `provider`.
+Uses [`GET https://api.openalex.org/works`](https://docs.openalex.org/api-entities/works/search-works) with `search=<taxon>` and `filter=type:article|review`. Set `OPENALEX_MAILTO` (falls back to `CROSSREF_MAILTO`) and optionally `OPENALEX_API_KEY` for a higher request budget. Results merge into `literature` ahead of Crossref, deduped by DOI; includes `cited_by_count` and `provider`.
 
 ### Crossref
 
