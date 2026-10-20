@@ -59,12 +59,32 @@ PaleoDAP / paleoclimate and CrossRef return empty collections with `status: stub
 pytest -q
 ```
 
+## Deploy on Render
+
+Repo is Render-ready (`render.yaml` + `Procfile`). This does **not** create a Render service by itself — connect the GitHub repo in the Render dashboard when you want it live.
+
+1. Push `main` to [hcneeley/upae](https://github.com/hcneeley/upae) (already the default).
+2. In Render: **New → Blueprint** and select this repo, **or** **New → Web Service** → connect `hcneeley/upae`.
+3. Confirm:
+   - **Build:** `pip install -r requirements.txt`
+   - **Start:** `gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
+   - **Health check:** `/api/v1/`
+4. Optional env vars (also listed in `render.yaml` / `.env.example`): `ADAPTER_TIMEOUT_SEC`, `CACHE_TTL_SEC`, `OCCURRENCE_LIMIT`.
+
+Free tier: the service may sleep when idle; the first request after a pause can take ~30–60 seconds. Synthesize fans out to several upstream APIs, so cold starts plus a full query can feel slow.
+
+Once deployed, try:
+
+```text
+https://<your-service>.onrender.com/api/v1/synthesize?taxon=Coleonyx+variegatus&lat=30.2672&lng=-97.7431&radius_km=500
+```
+
 ## Roadmap (post-MVP)
 
 - Redis cache + PostGIS spatial helpers
-- Wire MorphoSource, GBIF, PaleoDAP, CrossRef
+- Wire PaleoDAP and CrossRef
 - Taxonomic synonym resolution + bibliographic DOI linkage
-- Docker Compose + Render deploy
+- Docker Compose
 
 ## Upstream docs
 
@@ -72,4 +92,6 @@ pytest -q
 - [Macrostrat API](https://macrostrat.org/api)
 - [Neotoma APIv2](https://api.neotomadb.org/)
 - [iDigBio search](https://github.com/iDigBio/idigbio-search-api/wiki)
+- [MorphoSource API](https://github.com/MorphoSource/morphosource-api)
+- [GBIF OpenAPI](https://techdocs.gbif.org/en/openapi/)
 - Related composite: [elc-api](https://github.com/hcneeley/elc-api)

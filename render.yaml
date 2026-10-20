@@ -1,0 +1,24 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: push this repo to GitHub, then in Render:
+#   New → Blueprint → select hcneeley/upae
+# Or: New → Web Service → connect the repo (uses startCommand below).
+services:
+  - type: web
+    name: upae
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /api/v1/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: ADAPTER_TIMEOUT_SEC
+        value: "3.5"
+      - key: CACHE_TTL_SEC
+        value: "86400"
+      - key: OCCURRENCE_LIMIT
+        value: "50"
