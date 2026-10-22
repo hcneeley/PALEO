@@ -149,7 +149,11 @@ class SpecimenRecord(BaseModel):
 
 
 class SpecimensBlock(BaseModel):
+    # Upstream-available count when known (iDigBio itemCount); else page length.
     voucher_count: int = 0
+    returned: int = 0
+    total: int | None = None
+    has_more: bool = False
     records: list[SpecimenRecord] = Field(default_factory=list)
 
 

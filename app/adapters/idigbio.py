@@ -19,7 +19,13 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             provider="IDIGBIO",
             status="skipped",
             error="taxon required",
-            data={"records": []},
+            data={
+                "records": [],
+                "total_count": None,
+                "offset": 0,
+                "end_of_records": True,
+                "fetched": 0,
+            },
         )
 
     taxon = params.taxon.strip()
@@ -28,18 +34,22 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     else:
         rq = {"genus": taxon}
 
+    page = min(params.result_limit(), 300)
+    offset = params.result_offset()
+
     q = {
         "rq": json.dumps(rq),
-        "limit": min(params.result_limit(), 100),
-        "offset": 0,
+        "limit": page,
+        "offset": offset,
     }
     client = get_client()
     resp = await client.get(IDIGBIO_SEARCH, params=q)
     resp.raise_for_status()
     payload = resp.json()
 
+    raw = payload.get("items") or []
     records = []
-    for item in payload.get("items") or []:
+    for item in raw:
         idx = item.get("indexTerms") or {}
         data = item.get("data") or {}
         uuid = item.get("uuid") or idx.get("uuid")
@@ -65,4 +75,26 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             }
         )
 
-    return AdapterResult(provider="IDIGBIO", status="ok", data={"records": records})
+    total = payload.get("itemCount")
+    if total is not None:
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = None
+
+    fetched = len(raw)
+    end = fetched < page
+    if isinstance(total, int) and offset + fetched >= total:
+        end = True
+
+    return AdapterResult(
+        provider="IDIGBIO",
+        status="ok",
+        data={
+            "records": records,
+            "total_count": total,
+            "offset": offset,
+            "end_of_records": end,
+            "fetched": fetched,
+        },
+    )

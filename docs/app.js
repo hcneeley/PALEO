@@ -22,8 +22,44 @@
     history.replaceState(null, "", window.location.pathname + window.location.search);
   });
 
+  const THEME_KEY = "paleo-theme";
+  const themeToggle = document.getElementById("theme-toggle");
+  const themeToggleLabel = document.getElementById("theme-toggle-label");
+
+  function currentTheme() {
+    const t = document.documentElement.getAttribute("data-theme");
+    return t === "dark" ? "dark" : "light";
+  }
+
+  function syncThemeToggle(theme) {
+    if (!themeToggle) return;
+    const next = theme === "dark" ? "light" : "dark";
+    themeToggle.setAttribute("aria-label", `Switch to ${next} mode`);
+    if (themeToggleLabel) {
+      themeToggleLabel.textContent = next === "dark" ? "Dark" : "Light";
+    }
+  }
+
+  function applyTheme(theme) {
+    const next = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (_) {
+      /* ignore quota / private mode */
+    }
+    syncThemeToggle(next);
+  }
+
+  applyTheme(currentTheme());
+  themeToggle?.addEventListener("click", () => {
+    applyTheme(currentTheme() === "dark" ? "light" : "dark");
+  });
+
   /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
   const paging = { cancel: false, busy: false, ctx: null };
+  /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
+  const specimenPaging = { cancel: false, busy: false, ctx: null };
 
   /** @type {Array<{name:string,rank:string,t_age:number,b_age:number,color:string}>|null} */
   let icsIntervals = null;
@@ -290,7 +326,7 @@
     for (let a = startTick; a <= older + 1e-9; a += step) {
       const y = yOf(a);
       ticks.push(
-        `<line x1="${axisX}" y1="${y}" x2="${axisX + 5}" y2="${y}" stroke="rgba(232,239,230,0.4)"/>
+        `<line class="ages-axis-tick" x1="${axisX}" y1="${y}" x2="${axisX + 5}" y2="${y}"/>
          <text x="${axisX + 8}" y="${y + 3}" class="ages-tick">${esc(Number(a.toFixed(4)))}</text>`
       );
     }
@@ -339,7 +375,7 @@
       layers.pbdb.forEach((r, i) => {
         const inset = layers.pbdb.length > 1 ? (i / (layers.pbdb.length - 1 || 1)) * (trackW - 8) : trackW / 2 - 2;
         const xx = trackX + 4 + inset;
-        overlays.push(`<line x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke="#6fbfa6" stroke-width="2.4" stroke-linecap="round">
+        overlays.push(`<line class="ages-track-pbdb" x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke-width="2.4" stroke-linecap="round">
           <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
         </line>`);
       });
@@ -353,7 +389,7 @@
       layers.macro.forEach((r, i) => {
         const inset = layers.macro.length > 1 ? (i / (layers.macro.length - 1 || 1)) * (trackW - 8) : trackW / 2 - 2;
         const xx = trackX + 4 + inset;
-        overlays.push(`<line x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke="#c4d4c8" stroke-width="2.4" stroke-linecap="round">
+        overlays.push(`<line class="ages-track-macro" x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke-width="2.4" stroke-linecap="round">
           <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
         </line>`);
       });
@@ -364,8 +400,8 @@
     return `<svg class="ages-svg" viewBox="0 0 ${usedW} ${H}" role="img" aria-label="ICS chronostratigraphic chart with age overlays">
       ${headers.join("")}
       ${bands.join("")}
-      <rect x="8" y="${plotTop}" width="${chartRight - 14}" height="${plotH}" fill="none" stroke="rgba(232,239,230,0.2)"/>
-      <line x1="${axisX}" y1="${plotTop}" x2="${axisX}" y2="${plotTop + plotH}" stroke="rgba(232,239,230,0.35)"/>
+      <rect class="ages-frame" x="8" y="${plotTop}" width="${chartRight - 14}" height="${plotH}" fill="none"/>
+      <line class="ages-axis" x1="${axisX}" y1="${plotTop}" x2="${axisX}" y2="${plotTop + plotH}"/>
       ${ticks.join("")}
       ${overlays.join("")}
       <text x="8" y="${H - 10}" class="ages-caption">ICS chronostratigraphy (CGMW colors) · older ↓</text>
@@ -738,6 +774,9 @@
     paging.cancel = true;
     paging.busy = false;
     paging.ctx = null;
+    specimenPaging.cancel = true;
+    specimenPaging.busy = false;
+    specimenPaging.ctx = null;
     for (const id of fieldIds()) {
       const el = document.getElementById(id);
       if (!el) continue;
@@ -771,6 +810,9 @@
     hint.classList.remove("error");
     paging.cancel = true;
     paging.busy = false;
+    specimenPaging.cancel = true;
+    specimenPaging.busy = false;
+    specimenPaging.ctx = null;
 
     const taxon = fieldValue("taxon");
     const lat = fieldValue("lat");
@@ -1038,6 +1080,15 @@
       <td>${esc(paleo)}</td>
       <td>${esc(p.max_ma ?? "—")}–${esc(p.min_ma ?? "—")}</td>
     </tr>`;
+  }
+
+  function specimenRowHtml(s) {
+    return `<li>
+      <div class="item-title">${esc(s.scientific_name || "Specimen")}</div>
+      <div class="item-meta">${esc(s.institution_code || "")} ${esc(s.catalog_number || "")}${
+        s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">link</a>` : ""
+      }</div>
+    </li>`;
   }
 
   const PIE_COLORS = [
@@ -1336,18 +1387,31 @@
         </p>`
       : `<p class="empty">No occurrences.</p>`;
 
+    const specReturned = Number(data.specimens?.returned) || specimens.length;
+    const specTotal =
+      data.specimens?.total != null && Number.isFinite(Number(data.specimens.total))
+        ? Number(data.specimens.total)
+        : null;
+    const specHasMore =
+      typeof data.specimens?.has_more === "boolean"
+        ? data.specimens.has_more
+        : Boolean(specTotal != null && specReturned < specTotal);
     const specimenHtml = specimens.length
-      ? `<ul class="list">${specimens
-          .slice(0, show)
-          .map(
-            (s) => `<li>
-              <div class="item-title">${esc(s.scientific_name || "Specimen")}</div>
-              <div class="item-meta">${esc(s.institution_code || "")} ${esc(
-                s.catalog_number || ""
-              )}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">link</a>` : ""}</div>
-            </li>`
-          )
-          .join("")}</ul>`
+      ? `<ul class="list" id="specimen-list">${specimens.map(specimenRowHtml).join("")}</ul>
+        <p class="occ-progress" id="specimen-progress">Showing <strong>${specimens.length.toLocaleString()}</strong> loaded voucher(s)${
+          specTotal != null
+            ? ` · iDigBio <strong>${specReturned.toLocaleString()}</strong> of <strong>${specTotal.toLocaleString()}</strong>`
+            : ""
+        }</p>
+        <p class="occ-links" id="specimen-links">
+          ${
+            specHasMore
+              ? `<button type="button" class="linkish" id="specimen-load-more">Load more</button>
+                 <button type="button" class="linkish" id="specimen-load-all" hidden>Continue loading</button>
+                 <button type="button" class="linkish" id="specimen-stop" hidden>Stop</button>`
+              : `<span class="sub">No further iDigBio pages for this query.</span>`
+          }
+        </p>`
       : `<p class="empty">No specimen vouchers.</p>`;
 
     const mediaHtml = media.length
@@ -1452,7 +1516,15 @@
         agesHtml
       ),
       block("Occurrences", occSub, occHtml),
-      block("Specimens", `${data.specimens?.voucher_count ?? 0} voucher(s)`, specimenHtml),
+      block(
+        "Specimens",
+        `${(data.specimens?.returned ?? specimens.length).toLocaleString()} loaded${
+          data.specimens?.total != null
+            ? ` of ${Number(data.specimens.total).toLocaleString()} available`
+            : ""
+        } · iDigBio`,
+        specimenHtml
+      ),
       block("3D media", data.media_3d?.has_3d_assets ? "MorphoSource hits" : "None", mediaHtml),
       block(
         "Minerals",
@@ -1481,6 +1553,17 @@
     };
 
     wireOccControls(Boolean(opts.loadAll) && canPage);
+
+    specimenPaging.cancel = false;
+    specimenPaging.ctx = {
+      apiBase: opts.apiBase,
+      query: opts.query,
+      offset: specReturned,
+      total: specTotal,
+      hasMore: specHasMore,
+      loadedRows: specimens.length,
+    };
+    wireSpecimenControls(Boolean(opts.loadAll) && specHasMore);
   }
 
   function setOccButtons({ loadMore, loadAll, stop }) {
@@ -1520,6 +1603,117 @@
 
     if (autoLoadAll && paging.ctx?.hasMore) {
       void runPaging({ continuous: true });
+    }
+  }
+
+  function setSpecimenButtons({ loadMore, loadAll, stop }) {
+    const moreBtn = document.getElementById("specimen-load-more");
+    const allBtn = document.getElementById("specimen-load-all");
+    const stopBtn = document.getElementById("specimen-stop");
+    if (moreBtn) moreBtn.hidden = !loadMore;
+    if (allBtn) allBtn.hidden = !loadAll;
+    if (stopBtn) stopBtn.hidden = !stop;
+  }
+
+  function updateSpecimenProgress(message) {
+    const el = document.getElementById("specimen-progress");
+    if (el) el.innerHTML = message;
+  }
+
+  function formatSpecimenProgress(ctx, prefix = "Showing") {
+    return `${prefix} <strong>${ctx.loadedRows.toLocaleString()}</strong> loaded voucher(s)${
+      ctx.total != null
+        ? ` · iDigBio <strong>${ctx.loadedRows.toLocaleString()}</strong> of <strong>${Number(
+            ctx.total
+          ).toLocaleString()}</strong>`
+        : ""
+    }.`;
+  }
+
+  function wireSpecimenControls(autoLoadAll) {
+    document.getElementById("specimen-load-more")?.addEventListener("click", () => {
+      void runSpecimenPaging({ continuous: false });
+    });
+    document.getElementById("specimen-load-all")?.addEventListener("click", () => {
+      void runSpecimenPaging({ continuous: true });
+    });
+    document.getElementById("specimen-stop")?.addEventListener("click", () => {
+      specimenPaging.cancel = true;
+    });
+    if (autoLoadAll && specimenPaging.ctx?.hasMore) {
+      void runSpecimenPaging({ continuous: true });
+    }
+  }
+
+  async function fetchSpecimenPage(ctx) {
+    const qs = new URLSearchParams();
+    qs.set("provider", "IDIGBIO");
+    qs.set("offset", String(ctx.offset));
+    qs.set("limit", String(PAGE_SIZE));
+    if (ctx.query?.taxon) qs.set("taxon", ctx.query.taxon);
+    const resp = await fetch(`${ctx.apiBase}/api/v1/specimens?${qs.toString()}`);
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok || body.status !== "success") {
+      throw new Error(formatApiError(body) || body.detail || `HTTP ${resp.status}`);
+    }
+    return body;
+  }
+
+  async function runSpecimenPaging({ continuous }) {
+    if (!specimenPaging.ctx || specimenPaging.busy) return;
+    const ctx = specimenPaging.ctx;
+    if (!ctx.hasMore) return;
+
+    specimenPaging.busy = true;
+    specimenPaging.cancel = false;
+    setSpecimenButtons({ loadMore: false, loadAll: false, stop: true });
+
+    const list = document.getElementById("specimen-list");
+    try {
+      do {
+        if (specimenPaging.cancel) break;
+        if (ctx.loadedRows >= SOFT_CAP) {
+          updateSpecimenProgress(
+            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> vouchers${
+              ctx.total != null ? ` · catalog <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
+            }. Continue to load more.`
+          );
+          setSpecimenButtons({ loadMore: true, loadAll: true, stop: false });
+          specimenPaging.busy = false;
+          return;
+        }
+
+        updateSpecimenProgress(
+          `Paging iDigBio… ${formatSpecimenProgress(ctx, "loaded")}`
+        );
+
+        const page = await fetchSpecimenPage(ctx);
+        const rows = page.records || [];
+        if (list && rows.length) {
+          list.insertAdjacentHTML("beforeend", rows.map(specimenRowHtml).join(""));
+        }
+        ctx.loadedRows += rows.length;
+        ctx.offset = page.next_offset != null ? page.next_offset : ctx.offset + (page.returned || rows.length);
+        if (page.total != null) ctx.total = page.total;
+        ctx.hasMore = Boolean(page.has_more);
+
+        if (!continuous) break;
+      } while (ctx.hasMore && !specimenPaging.cancel);
+
+      if (specimenPaging.cancel) {
+        updateSpecimenProgress(`Stopped. ${formatSpecimenProgress(ctx)}`);
+      } else {
+        updateSpecimenProgress(formatSpecimenProgress(ctx));
+      }
+    } catch (err) {
+      updateSpecimenProgress(`Paging error: ${esc(err.message || err)}`);
+    } finally {
+      specimenPaging.busy = false;
+      setSpecimenButtons({
+        loadMore: Boolean(ctx.hasMore),
+        loadAll: Boolean(ctx.hasMore),
+        stop: false,
+      });
     }
   }
 

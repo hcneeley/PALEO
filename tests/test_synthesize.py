@@ -167,6 +167,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
+                "itemCount": 1,
                 "items": [
                     {
                         "uuid": "abc-123",
@@ -177,7 +178,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
                         },
                         "indexTerms": {},
                     }
-                ]
+                ],
             },
         )
     )
@@ -398,6 +399,9 @@ def test_synthesize_happy_path(client, monkeypatch):
         for s in body["occurrences"]["source_totals"]
     )
     assert body["specimens"]["voucher_count"] == 1
+    assert body["specimens"]["returned"] == 1
+    assert body["specimens"]["total"] == 1
+    assert body["specimens"]["has_more"] is False
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
     assert providers["TAXONOMY"] == "ok"

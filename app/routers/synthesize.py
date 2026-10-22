@@ -205,8 +205,27 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     idig = results.get("IDIGBIO")
     specimens_raw = (idig.data or {}).get("records") or [] if idig else []
     specimen_records = _safe_models(SpecimenRecord, specimens_raw)
+    spec_total = (idig.data or {}).get("total_count") if idig else None
+    if spec_total is not None:
+        try:
+            spec_total = int(spec_total)
+        except (TypeError, ValueError):
+            spec_total = None
+    spec_returned = len(specimen_records)
+    spec_end = bool((idig.data or {}).get("end_of_records")) if idig else True
+    if spec_total is not None and spec_returned >= int(spec_total):
+        spec_end = True
+    spec_has_more = (
+        (idig.status == "ok" if idig else False)
+        and (not spec_end)
+        and spec_returned > 0
+        and (spec_total is None or spec_returned < int(spec_total))
+    )
     specimens = SpecimensBlock(
-        voucher_count=len(specimen_records),
+        voucher_count=int(spec_total) if spec_total is not None else spec_returned,
+        returned=spec_returned,
+        total=spec_total,
+        has_more=spec_has_more,
         records=specimen_records,
     )
 
