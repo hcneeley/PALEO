@@ -36,7 +36,7 @@
   function loadIcsIntervals() {
     if (icsIntervals) return Promise.resolve(icsIntervals);
     if (!icsLoadPromise) {
-      icsLoadPromise = fetch("./ics-intervals.json")
+      icsLoadPromise = fetch("./ics-intervals.json?v=cachebust2")
         .then((r) => (r.ok ? r.json() : { intervals: [] }))
         .then((j) => {
           icsIntervals = Array.isArray(j.intervals) ? j.intervals : [];
