@@ -93,7 +93,7 @@ Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&s
 
 ## Web UI
 
-Try the search interface at [hcneeley.github.io/upae](https://hcneeley.github.io/upae/) — enter a taxon or mineral, optional location and age bounds, and browse synthesized geology, occurrences, specimens, minerals, and literature from the live API.
+Try the search interface at [hcneeley.github.io/PALEO](https://hcneeley.github.io/PALEO/) — enter a taxon or mineral, optional location and age bounds, and browse synthesized geology, occurrences, specimens, minerals, and literature from the live API.
 
 Static files live in `docs/` and publish from the `main` branch via [GitHub Pages](https://github.com/hcneeley/upae/settings/pages) (Source: **Deploy from a branch** → `/docs`).
 
