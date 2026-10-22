@@ -22,8 +22,6 @@
     history.replaceState(null, "", window.location.pathname + window.location.search);
   });
 
-  loadIcsIntervals();
-
   /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
   const paging = { cancel: false, busy: false, ctx: null };
 
@@ -51,6 +49,8 @@
     }
     return icsLoadPromise;
   }
+
+  loadIcsIntervals();
 
   function numOrNull(v) {
     if (v === "" || v == null) return null;
