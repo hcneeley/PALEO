@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=mobile-sticky-v1" />
+    <link rel="stylesheet" href="./styles.css?v=theme-fade-v1" />
     <script>
       (function () {
         try {
@@ -29,7 +29,10 @@
     </script>
   </head>
   <body>
-    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="atmosphere-layer atmosphere-light"></div>
+      <div class="atmosphere-layer atmosphere-dark"></div>
+    </div>
     <nav id="section-nav" class="section-nav" hidden aria-label="Jump to section">
       <p class="section-nav-label">Sections</p>
       <ul id="section-nav-list"></ul>
@@ -157,6 +160,6 @@
         Larger catalogs need Browse all on GBIF (download / portal).
       </p>
     </footer>
-    <script src="./app.js?v=mobile-scroll-tax-v1"></script>
+    <script src="./app.js?v=theme-fade-v1"></script>
   </body>
 </html>

@@ -28,10 +28,15 @@
   --scrim: rgba(26, 36, 32, 0.45);
   --chart-bg: rgba(255, 255, 255, 0.65);
   --band-label: rgba(12, 18, 16, 0.78);
-  --atmosphere:
+  --atmosphere-light:
     radial-gradient(ellipse 90% 55% at 12% -8%, rgba(42, 125, 102, 0.12), transparent 55%),
     radial-gradient(ellipse 70% 50% at 92% 8%, rgba(184, 120, 42, 0.12), transparent 50%),
     linear-gradient(165deg, #f5f8f5 0%, #eef2ee 48%, #e6ece7 100%);
+  --atmosphere-dark:
+    radial-gradient(ellipse 90% 55% at 15% -10%, rgba(111, 191, 166, 0.16), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(224, 164, 90, 0.14), transparent 50%),
+    linear-gradient(165deg, #101814 0%, #0c1210 45%, #0a0f0d 100%);
+  --theme-fade: 0.45s ease;
   --radius: 10px;
   --font-title: Krungthep, "Krungthep", "Trirong", "Sora", sans-serif;
   --font-display: "Fraunces", "Times New Roman", serif;
@@ -66,10 +71,6 @@
   --scrim: rgba(6, 10, 9, 0.72);
   --chart-bg: rgba(12, 18, 16, 0.35);
   --band-label: rgba(12, 18, 16, 0.78);
-  --atmosphere:
-    radial-gradient(ellipse 90% 55% at 15% -10%, rgba(111, 191, 166, 0.16), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(224, 164, 90, 0.14), transparent 50%),
-    linear-gradient(165deg, #101814 0%, #0c1210 45%, #0a0f0d 100%);
 }
 
 *,
@@ -98,15 +99,71 @@ body {
   font-size: 15px;
   line-height: 1.5;
   color: var(--ink);
-  background: var(--bg0);
+  background-color: var(--bg0);
 }
 
 .atmosphere {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: var(--atmosphere);
+  pointer-events: none;
   animation: drift 18s ease-in-out infinite alternate;
+}
+
+.atmosphere-layer {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--theme-fade);
+}
+
+.atmosphere-light {
+  background: var(--atmosphere-light);
+  opacity: 1;
+}
+
+.atmosphere-dark {
+  background: var(--atmosphere-dark);
+  opacity: 0;
+}
+
+[data-theme="dark"] .atmosphere-light {
+  opacity: 0;
+}
+
+[data-theme="dark"] .atmosphere-dark {
+  opacity: 1;
+}
+
+/* Smooth color/surface fade while toggling theme (class set from JS). */
+html.theme-animating,
+html.theme-animating body,
+html.theme-animating body *,
+html.theme-animating body *::before,
+html.theme-animating body *::after {
+  transition:
+    color var(--theme-fade),
+    background-color var(--theme-fade),
+    border-color var(--theme-fade),
+    box-shadow var(--theme-fade),
+    outline-color var(--theme-fade),
+    fill var(--theme-fade),
+    stroke var(--theme-fade),
+    opacity var(--theme-fade) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atmosphere-layer,
+  html.theme-animating,
+  html.theme-animating body,
+  html.theme-animating body *,
+  html.theme-animating body *::before,
+  html.theme-animating body *::after {
+    transition: none !important;
+  }
+
+  .atmosphere {
+    animation: none;
+  }
 }
 
 @keyframes drift {
