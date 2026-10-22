@@ -36,7 +36,7 @@
   function loadIcsIntervals() {
     if (icsIntervals) return Promise.resolve(icsIntervals);
     if (!icsLoadPromise) {
-      icsLoadPromise = fetch("./ics-intervals.json?v=cachebust2")
+      icsLoadPromise = fetch("./ics-intervals.json?v=neotoma-ics-v3")
         .then((r) => (r.ok ? r.json() : { intervals: [] }))
         .then((j) => {
           icsIntervals = Array.isArray(j.intervals) ? j.intervals : [];
@@ -78,16 +78,27 @@
     return age >= lo && age <= hi;
   }
 
-  function resolveChronostrat(ageMa, intervals) {
+  function nameAtChronoRank(ageMa, rank, intervals) {
     if (ageMa == null || !Number.isFinite(ageMa) || !intervals?.length) return null;
+    const hits = intervals.filter((i) => i.rank === rank && intervalContains(i, ageMa));
+    if (!hits.length) return null;
+    hits.sort(
+      (a, b) => Math.abs(a.b_age - a.t_age) - Math.abs(b.b_age - b.t_age) || a.name.localeCompare(b.name)
+    );
+    return hits[0].name;
+  }
+
+  /** Resolve eonothem→stage; ranges become "Oligocene–Pliocene" when bounds differ. */
+  function resolveChronostratRange(older, younger, intervals) {
+    const hi = older != null ? older : younger;
+    const lo = younger != null ? younger : older;
+    if (hi == null || !intervals?.length) return null;
     const out = {};
     for (const rank of CHRONO_RANKS) {
-      const hits = intervals.filter((i) => i.rank === rank && intervalContains(i, ageMa));
-      if (!hits.length) continue;
-      hits.sort(
-        (a, b) => Math.abs(a.b_age - a.t_age) - Math.abs(b.b_age - b.t_age) || a.name.localeCompare(b.name)
-      );
-      out[rank] = hits[0].name;
+      const nOld = nameAtChronoRank(hi, rank, intervals);
+      const nYoung = nameAtChronoRank(lo, rank, intervals);
+      if (!nOld && !nYoung) continue;
+      out[rank] = nOld && nYoung && nOld !== nYoung ? `${nOld}–${nYoung}` : nOld || nYoung;
     }
     return Object.keys(out).length ? out : null;
   }
@@ -102,16 +113,9 @@
     return `${younger} Ma`;
   }
 
-  function chronostratTaxonomyHtml(data, query, intervals) {
-    const { younger, older } = queryAgeBounds(data, query);
-    if (younger == null && older == null) return "";
-    const mid =
-      younger != null && older != null
-        ? (younger + older) / 2
-        : younger != null
-          ? younger
-          : older;
-    const chrono = resolveChronostrat(mid, intervals);
+  function chronostratPlainListHtml(older, younger, intervals, heading) {
+    const chrono = resolveChronostratRange(older, younger, intervals);
+    if (!chrono && older == null && younger == null) return "";
     const maLine = formatMaPair(older, younger);
     const ranksHtml = chrono
       ? `<ol class="taxonomy-tree chrono-tree">${CHRONO_RANKS.filter((r) => chrono[r])
@@ -124,10 +128,16 @@
           .join("")}</ol>`
       : "";
     return `<div class="chrono-plain">
-      <p class="sub">Chronostratigraphy</p>
-      <p class="chrono-ma">${esc(maLine)}</p>
+      ${heading ? `<p class="sub">${esc(heading)}</p>` : ""}
+      ${maLine ? `<p class="chrono-ma">${esc(maLine)}</p>` : ""}
       ${ranksHtml}
     </div>`;
+  }
+
+  function chronostratTaxonomyHtml(data, query, intervals) {
+    const { younger, older } = queryAgeBounds(data, query);
+    if (younger == null && older == null) return "";
+    return chronostratPlainListHtml(older, younger, intervals, "Chronostratigraphy");
   }
 
   function collectAgeLayers(data, query) {
@@ -197,48 +207,81 @@
     return { older, younger };
   }
 
-  function buildAgesChartSvg(layers, intervals, full) {
-    const { older, younger } = agesDomain(layers, full);
-    const span = older - younger || 1;
-    const W = 560;
-    const H = 420;
-    const padT = 16;
-    const padB = 28;
-    const padL = 8;
-    const colX = 48;
-    const colW = 56;
-    const trackGap = 10;
-    const trackW = 52;
-    const axisX = colX + colW + 8;
-    const plotTop = padT;
-    const plotH = H - padT - padB;
-
-    const yOf = (age) => plotTop + ((age - younger) / span) * plotH;
-
-    const systems = (intervals || []).filter(
-      (i) => i.rank === "System" && i.b_age > younger && i.t_age < older
-    );
-    const bands = systems
+  function icsColumnBands(rank, intervals, younger, older, yOf, x, width, showLabels) {
+    const spanMin = Math.max((older - younger) * 0.02, 0.05);
+    return (intervals || [])
+      .filter((i) => i.rank === rank)
       .map((i) => {
         const top = Math.max(younger, Math.min(i.t_age, i.b_age));
         const bot = Math.min(older, Math.max(i.t_age, i.b_age));
         if (bot <= top) return "";
         const y1 = yOf(top);
         const y2 = yOf(bot);
-        return `<rect x="${colX}" y="${y1}" width="${colW}" height="${Math.max(
-          1,
-          y2 - y1
-        )}" fill="${esc(i.color)}" stroke="rgba(12,18,16,0.35)" stroke-width="0.5">
-          <title>${esc(i.name)} ${esc(i.b_age)}–${esc(i.t_age)} Ma</title>
-        </rect>`;
+        const h = Math.max(1, y2 - y1);
+        const label =
+          showLabels && h >= 12
+            ? `<text x="${x + width / 2}" y="${y1 + Math.min(h / 2 + 3, h - 2)}" text-anchor="middle" class="ages-band-label">${esc(
+                i.name
+              )}</text>`
+            : "";
+        return `<rect x="${x}" y="${y1}" width="${width}" height="${h}" fill="${esc(
+          i.color
+        )}" stroke="rgba(12,18,16,0.4)" stroke-width="0.4">
+          <title>${esc(i.name)} · ${esc(i.b_age)}–${esc(i.t_age)} Ma</title>
+        </rect>${label}`;
       })
       .join("");
+  }
 
+  function overlayRange(x, width, y1, y2, fill, stroke, title) {
+    const top = Math.min(y1, y2);
+    const h = Math.max(2, Math.abs(y2 - y1));
+    return `<rect x="${x}" y="${top}" width="${width}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1.25" rx="2">
+      <title>${esc(title)}</title>
+    </rect>`;
+  }
+
+  /** Multi-column ICS chronostrat chart (CGMW colors) with range overlays. */
+  function buildAgesChartSvg(layers, intervals, full) {
+    const { older, younger } = agesDomain(layers, full);
+    const span = older - younger || 1;
+    const padT = 22;
+    const padB = 32;
+    const H = 480;
+    const plotTop = padT;
+    const plotH = H - padT - padB;
+    const yOf = (age) => plotTop + ((age - younger) / span) * plotH;
+
+    const cols = [
+      { rank: "Eonothem", w: 44 },
+      { rank: "Erathem", w: 52 },
+      { rank: "System", w: 70 },
+      { rank: "Series", w: 78 },
+      { rank: "Stage", w: span <= 80 ? 86 : 0 },
+    ].filter((c) => c.w > 0);
+
+    let x = 8;
+    const headers = [];
+    const bands = [];
+    for (const col of cols) {
+      headers.push(
+        `<text x="${x + col.w / 2}" y="${padT - 8}" text-anchor="middle" class="ages-track-label">${esc(
+          col.rank
+        )}</text>`
+      );
+      bands.push(
+        icsColumnBands(col.rank, intervals, younger, older, yOf, x, col.w, col.rank !== "Stage" || span <= 40)
+      );
+      x += col.w + 2;
+    }
+
+    const chartRight = x + 6;
+    const axisX = chartRight;
     const ticks = [];
     const niceSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
     let step = 10;
     for (const s of niceSteps) {
-      if (span / s <= 8) {
+      if (span / s <= 9) {
         step = s;
         break;
       }
@@ -247,78 +290,125 @@
     for (let a = startTick; a <= older + 1e-9; a += step) {
       const y = yOf(a);
       ticks.push(
-        `<line x1="${axisX}" y1="${y}" x2="${axisX + 6}" y2="${y}" stroke="rgba(232,239,230,0.35)"/>
-         <text x="${axisX + 10}" y="${y + 3}" class="ages-tick">${esc(
-          Number(a.toFixed(4))
-        )}</text>`
+        `<line x1="${axisX}" y1="${y}" x2="${axisX + 5}" y2="${y}" stroke="rgba(232,239,230,0.4)"/>
+         <text x="${axisX + 8}" y="${y + 3}" class="ages-tick">${esc(Number(a.toFixed(4)))}</text>`
       );
     }
 
-    let trackX = axisX + 48;
-    const tracks = [];
+    let trackX = axisX + 44;
+    const trackW = 36;
+    const trackGap = 14;
+    const overlays = [];
 
-    // Query bounds band
     if (layers.bounds.older != null || layers.bounds.younger != null) {
       const qOld = layers.bounds.older ?? layers.bounds.younger;
       const qYoung = layers.bounds.younger ?? layers.bounds.older;
-      const y1 = yOf(qYoung);
-      const y2 = yOf(qOld);
-      tracks.push(`<g class="ages-track">
-        <text x="${trackX + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">Query</text>
-        <rect x="${trackX}" y="${y1}" width="${trackW}" height="${Math.max(2, y2 - y1)}"
-          fill="rgba(224,164,90,0.35)" stroke="#e0a45a" stroke-width="1.2">
-          <title>Query ${esc(formatMaPair(qOld, qYoung))}</title>
-        </rect>
-      </g>`);
+      overlays.push(
+        `<text x="${trackX + trackW / 2}" y="${padT - 8}" text-anchor="middle" class="ages-track-label">Query</text>`
+      );
+      overlays.push(
+        overlayRange(
+          trackX,
+          trackW,
+          yOf(qYoung),
+          yOf(qOld),
+          "rgba(224,164,90,0.45)",
+          "#e0a45a",
+          `Query ${formatMaPair(qOld, qYoung)}`
+        )
+      );
+      // Highlight band across ICS columns
+      overlays.push(
+        overlayRange(
+          8,
+          chartRight - 14,
+          yOf(qYoung),
+          yOf(qOld),
+          "rgba(224,164,90,0.12)",
+          "rgba(224,164,90,0.35)",
+          `Query ${formatMaPair(qOld, qYoung)}`
+        )
+      );
       trackX += trackW + trackGap;
     }
 
-    // PBDB ranges
     if (layers.pbdb.length) {
-      const x0 = trackX;
-      const n = layers.pbdb.length;
-      tracks.push(`<text x="${x0 + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">PBDB</text>`);
+      overlays.push(
+        `<text x="${trackX + trackW / 2}" y="${padT - 8}" text-anchor="middle" class="ages-track-label">PBDB</text>`
+      );
       layers.pbdb.forEach((r, i) => {
-        const inset = n > 1 ? (i / Math.max(n - 1, 1)) * (trackW - 10) : trackW / 2 - 2;
-        const x = x0 + 4 + inset;
-        const y1 = yOf(r.younger);
-        const y2 = yOf(r.older);
-        tracks.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#6fbfa6" stroke-width="2.5" stroke-linecap="round">
+        const inset = layers.pbdb.length > 1 ? (i / (layers.pbdb.length - 1 || 1)) * (trackW - 8) : trackW / 2 - 2;
+        const xx = trackX + 4 + inset;
+        overlays.push(`<line x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke="#6fbfa6" stroke-width="2.4" stroke-linecap="round">
           <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
-        </line>
-        <circle cx="${x}" cy="${(y1 + y2) / 2}" r="2.2" fill="#6fbfa6"/>`);
+        </line>`);
       });
       trackX += trackW + trackGap;
     }
 
-    // Macrostrat ranges
     if (layers.macro.length) {
-      const x0 = trackX;
-      const n = layers.macro.length;
-      tracks.push(`<text x="${x0 + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">Macrostrat</text>`);
+      overlays.push(
+        `<text x="${trackX + trackW / 2}" y="${padT - 8}" text-anchor="middle" class="ages-track-label">Macrostrat</text>`
+      );
       layers.macro.forEach((r, i) => {
-        const inset = n > 1 ? (i / Math.max(n - 1, 1)) * (trackW - 10) : trackW / 2 - 2;
-        const x = x0 + 4 + inset;
-        const y1 = yOf(r.younger);
-        const y2 = yOf(r.older);
-        tracks.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#9aafa3" stroke-width="2.5" stroke-linecap="round">
+        const inset = layers.macro.length > 1 ? (i / (layers.macro.length - 1 || 1)) * (trackW - 8) : trackW / 2 - 2;
+        const xx = trackX + 4 + inset;
+        overlays.push(`<line x1="${xx}" y1="${yOf(r.younger)}" x2="${xx}" y2="${yOf(r.older)}" stroke="#c4d4c8" stroke-width="2.4" stroke-linecap="round">
           <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
-        </line>
-        <circle cx="${x}" cy="${(y1 + y2) / 2}" r="2.2" fill="#9aafa3"/>`);
+        </line>`);
       });
       trackX += trackW + trackGap;
     }
 
-    const usedW = Math.max(W, trackX + padL);
-    return `<svg class="ages-svg" viewBox="0 0 ${usedW} ${H}" role="img" aria-label="ICS chronostratigraphy with ages">
-      <text x="${colX + colW / 2}" y="${H - 8}" text-anchor="middle" class="ages-caption">ICS systems</text>
-      <text x="${axisX + 10}" y="${H - 8}" class="ages-caption">Ma (older ↓)</text>
-      ${bands}
-      <rect x="${colX}" y="${plotTop}" width="${colW}" height="${plotH}" fill="none" stroke="rgba(232,239,230,0.25)"/>
+    const usedW = Math.max(620, trackX + 8);
+    return `<svg class="ages-svg" viewBox="0 0 ${usedW} ${H}" role="img" aria-label="ICS chronostratigraphic chart with age overlays">
+      ${headers.join("")}
+      ${bands.join("")}
+      <rect x="8" y="${plotTop}" width="${chartRight - 14}" height="${plotH}" fill="none" stroke="rgba(232,239,230,0.2)"/>
       <line x1="${axisX}" y1="${plotTop}" x2="${axisX}" y2="${plotTop + plotH}" stroke="rgba(232,239,230,0.35)"/>
       ${ticks.join("")}
-      ${tracks.join("")}
+      ${overlays.join("")}
+      <text x="8" y="${H - 10}" class="ages-caption">ICS chronostratigraphy (CGMW colors) · older ↓</text>
     </svg>`;
+  }
+
+  function agesPlainTextBlocks(layers, intervals) {
+    const blocks = [];
+    if (layers.bounds.older != null || layers.bounds.younger != null) {
+      blocks.push(
+        chronostratPlainListHtml(
+          layers.bounds.older,
+          layers.bounds.younger,
+          intervals,
+          "Query age"
+        )
+      );
+    }
+    // Summarize PBDB as union span + per-row labels when few
+    if (layers.pbdb.length) {
+      const older = Math.max(...layers.pbdb.map((r) => r.older));
+      const younger = Math.min(...layers.pbdb.map((r) => r.younger));
+      blocks.push(chronostratPlainListHtml(older, younger, intervals, `PBDB fossils (${layers.pbdb.length})`));
+      if (layers.pbdb.length <= 8) {
+        const rows = layers.pbdb
+          .map((r) => {
+            const chrono = resolveChronostratRange(r.older, r.younger, intervals);
+            const stage = chrono?.Stage || chrono?.Series || "—";
+            return `<li><span class="chrono-ma">${esc(formatMaPair(r.older, r.younger))}</span>
+              <span class="item-meta"> · ${esc(stage)} · ${esc(r.label)}</span></li>`;
+          })
+          .join("");
+        blocks.push(`<ul class="list chrono-occ-list">${rows}</ul>`);
+      }
+    }
+    if (layers.macro.length) {
+      const older = Math.max(...layers.macro.map((r) => r.older));
+      const younger = Math.min(...layers.macro.map((r) => r.younger));
+      blocks.push(
+        chronostratPlainListHtml(older, younger, intervals, `Macrostrat units (${layers.macro.length})`)
+      );
+    }
+    return blocks.filter(Boolean).join("");
   }
 
   function agesSectionHtml(data, query, intervals) {
@@ -332,22 +422,23 @@
     const svg = buildAgesChartSvg(layers, intervals, agesChartState.full);
     const legend = [
       hasQuery ? `<span class="ages-leg query">Query bounds</span>` : "",
-      layers.pbdb.length
-        ? `<span class="ages-leg pbdb">PBDB · ${layers.pbdb.length}</span>`
-        : "",
+      layers.pbdb.length ? `<span class="ages-leg pbdb">PBDB · ${layers.pbdb.length}</span>` : "",
       layers.macro.length
         ? `<span class="ages-leg macro">Macrostrat · ${layers.macro.length}</span>`
         : "",
     ]
       .filter(Boolean)
       .join("");
+    const plain = agesPlainTextBlocks(layers, intervals);
     return `<div class="ages-toolbar">
         <button type="button" class="linkish" id="ages-full-toggle">${
           agesChartState.full ? "Zoom to data" : "Full Phanerozoic"
         }</button>
         <div class="ages-legend">${legend}</div>
       </div>
-      <div id="ages-chart-host" class="ages-chart-host">${svg}</div>`;
+      <div id="ages-chart-host" class="ages-chart-host">${svg}</div>
+      <p class="ages-attribution item-meta">Interval names &amp; colours follow the ICS chronostratigraphic chart (CGMW colouring via Macrostrat international timescales).</p>
+      <div class="ages-plain-wrap">${plain}</div>`;
   }
 
   function wireAgesChartToggle() {
@@ -365,6 +456,99 @@
       }
       btn.textContent = agesChartState.full ? "Zoom to data" : "Full Phanerozoic";
     });
+  }
+
+  function patchNeotomaDiagnostic(data, status, error, recordCount) {
+    const diags = data.diagnostics || [];
+    const idx = diags.findIndex((d) => d.provider === "NEOTOMA");
+    const row = {
+      provider: "NEOTOMA",
+      status,
+      error: error || null,
+      record_count: recordCount || 0,
+      elapsed_ms: null,
+    };
+    if (idx >= 0) diags[idx] = { ...diags[idx], ...row };
+    else diags.push(row);
+    data.diagnostics = diags;
+  }
+
+  async function fetchDeferredNeotoma(apiBase, query, data) {
+    const waiting = (data.diagnostics || []).some(
+      (d) => d.provider === "NEOTOMA" && d.status === "waiting"
+    );
+    if (!waiting) return;
+    if (!query?.taxon) {
+      patchNeotomaDiagnostic(data, "skipped", "taxon required", 0);
+      renderStatus(data);
+      return;
+    }
+
+    renderStatus(data);
+    try {
+      const qs = new URLSearchParams({
+        provider: "NEOTOMA",
+        taxon: query.taxon,
+        limit: String(query.limit || DEFAULT_LIMIT),
+      });
+      if (query.lat !== "" && query.lat != null) qs.set("lat", query.lat);
+      if (query.lng !== "" && query.lng != null) qs.set("lng", query.lng);
+      if (query.radius !== "" && query.radius != null) qs.set("radius_km", query.radius);
+      if (query.ageMin) qs.set("age_min", query.ageMin);
+      if (query.ageMax) qs.set("age_max", query.ageMax);
+
+      const resp = await fetch(`${apiBase}/api/v1/occurrences?${qs.toString()}`);
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || body.status === "error") {
+        patchNeotomaDiagnostic(
+          data,
+          "error",
+          body.detail || body.error || `HTTP ${resp.status}`,
+          0
+        );
+        renderStatus(data);
+        return;
+      }
+
+      const feats = Array.isArray(body.features) ? body.features : [];
+      data.occurrences = data.occurrences || { features: [], source_totals: [] };
+      data.occurrences.features = [...(data.occurrences.features || []), ...feats];
+
+      const totals = data.occurrences.source_totals || [];
+      const ti = totals.findIndex((s) => s.provider === "NEOTOMA");
+      const neoTotal = { provider: "NEOTOMA", returned: feats.length, total: null };
+      if (ti >= 0) totals[ti] = neoTotal;
+      else totals.push(neoTotal);
+      data.occurrences.source_totals = totals;
+
+      // Recompute available total from source_totals (prefer upstream totals).
+      data.occurrences.total_records = totals.reduce((sum, s) => {
+        if (s.total != null && Number.isFinite(Number(s.total))) return sum + Number(s.total);
+        return sum + (Number(s.returned) || 0);
+      }, 0);
+
+      patchNeotomaDiagnostic(
+        data,
+        "ok",
+        feats.length ? null : "No Neotoma occurrences for this taxon",
+        feats.length
+      );
+      renderStatus(data);
+
+      const tbody = document.getElementById("occ-tbody");
+      if (tbody && feats.length) {
+        tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
+      }
+      const progress = document.getElementById("occ-progress");
+      if (progress) {
+        const n = (data.occurrences.features || []).length;
+        progress.innerHTML = `Showing <strong>${n.toLocaleString()}</strong> loaded occurrence(s) (Neotoma updated)`;
+      }
+      if (paging.ctx) paging.ctx.loadedRows = (data.occurrences.features || []).length;
+    } catch (err) {
+      patchNeotomaDiagnostic(data, "error", String(err.message || err), 0);
+      renderStatus(data);
+    }
   }
 
   function resolveApiBase() {
@@ -536,11 +720,19 @@
   function renderStatus(data) {
     const pills = (data.diagnostics || [])
       .map((d) => {
-        const cls = d.status === "ok" ? "ok" : d.status === "error" ? "error" : "skipped";
+        const cls =
+          d.status === "ok"
+            ? "ok"
+            : d.status === "error"
+              ? "error"
+              : d.status === "waiting"
+                ? "waiting"
+                : "skipped";
         const title = d.error ? ` title="${esc(d.error)}"` : "";
-        return `<span class="pill ${cls}"${title}>${esc(d.provider)} · ${esc(d.status)}${
-          d.record_count ? ` · ${esc(d.record_count)}` : ""
-        }</span>`;
+        const count =
+          d.status === "ok" && Number(d.record_count) > 0 ? ` · ${esc(d.record_count)}` : "";
+        const label = d.status === "waiting" ? "waiting…" : d.status;
+        return `<span class="pill ${cls}"${title}>${esc(d.provider)} · ${esc(label)}${count}</span>`;
       })
       .join("");
 
@@ -1045,9 +1237,7 @@
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
       block(
         "Ages",
-        agesCount
-          ? `ICS column · query, PBDB, Macrostrat`
-          : "No ages in this result",
+        agesCount ? `ICS chronostrat chart · query, PBDB, Macrostrat` : "No ages in this result",
         agesHtml
       ),
       block("Occurrences", occSub, occHtml),
@@ -1067,6 +1257,8 @@
     wireAgesChartToggle();
 
     if (!opts.apiBase) return;
+
+    void fetchDeferredNeotoma(opts.apiBase, opts.query, data);
 
     paging.cancel = false;
     paging.ctx = {

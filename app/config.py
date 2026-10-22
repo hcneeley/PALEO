@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     # Longer budgets for heavy / slow upstreams (env: ADAPTER_TIMEOUT_*_SEC)
     adapter_timeout_gbif_sec: float = 25.0
     adapter_timeout_mindat_sec: float = 30.0
-    adapter_timeout_neotoma_sec: float = 25.0
+    # Neotoma is deferred on the client; allow a longer solo fetch before giving up.
+    adapter_timeout_neotoma_sec: float = 45.0
     adapter_timeout_idigbio_sec: float = 20.0
     adapter_timeout_morphosource_sec: float = 20.0
 

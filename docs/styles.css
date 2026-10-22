@@ -809,3 +809,45 @@ button.linkish:hover {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+.ages-band-label {
+  fill: rgba(12, 18, 16, 0.78);
+  font-size: 7.5px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.ages-attribution {
+  margin: 0.55rem 0 0.85rem;
+}
+
+.ages-plain-wrap {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ages-plain-wrap .chrono-plain {
+  margin-top: 0;
+  padding-top: 0.65rem;
+}
+
+.chrono-occ-list {
+  margin: 0.25rem 0 0;
+}
+
+.pill.waiting {
+  border-color: rgba(212, 179, 90, 0.55);
+  color: var(--warn);
+  animation: pulse-wait 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-wait {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}

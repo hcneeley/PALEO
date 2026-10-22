@@ -40,15 +40,13 @@ class AdapterResult:
     data: dict[str, Any] = field(default_factory=dict)
 
     def diagnostic(self) -> AdapterDiagnostic:
-        count = 0
-        if "features" in self.data:
+        # Only count real returned rows — never the request limit / placeholders.
+        if self.status in ("waiting", "skipped", "error"):
+            count = 0
+        elif "features" in self.data:
             count = len(self.data.get("features") or [])
         elif "units" in self.data:
             count = len(self.data.get("units") or [])
-        elif "records" in self.data:
-            count = len(self.data.get("records") or [])
-        elif "studies" in self.data:
-            count = len(self.data.get("studies") or [])
         elif "literature" in self.data:
             count = len(self.data.get("literature") or [])
         elif "hierarchy" in self.data:
@@ -59,8 +57,13 @@ class AdapterResult:
             count = len(self.data.get("minerals") or []) + len(
                 self.data.get("localities") or []
             )
+        elif "records" in self.data and "hierarchy" not in self.data:
+            # Specimen / media style payloads (avoid taxonomy's alias "records").
+            count = len(self.data.get("records") or [])
         elif isinstance(self.data.get("proxy"), dict):
             count = int((self.data["proxy"] or {}).get("study_count") or 0)
+        else:
+            count = 0
         return AdapterDiagnostic(
             provider=self.provider,
             status=self.status,

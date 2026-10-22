@@ -5,15 +5,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, Response
 from pydantic import ValidationError
 
-from ..adapters import gbif
+from ..adapters import gbif, neotoma
 from ..adapters.base import QueryParams, run_adapter
 from ..config import settings
 from ..models.schemas import OccurrenceFeature
 
 router = APIRouter(prefix="/api/v1", tags=["occurrences"])
 
-# Providers that support offset paging via this endpoint.
-PAGEABLE = {"GBIF": gbif.fetch_and_parse}
+# Providers that support fetch via this endpoint (GBIF also supports offset paging).
+PAGEABLE = {
+    "GBIF": gbif.fetch_and_parse,
+    "NEOTOMA": neotoma.fetch_and_parse,
+}
 
 # GBIF occurrence search hard window.
 GBIF_SEARCH_WINDOW = 100_000
