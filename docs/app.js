@@ -15,8 +15,7 @@
   const resultsEl = document.getElementById("results");
   const sectionNav = document.getElementById("section-nav");
   const sectionNavList = document.getElementById("section-nav-list");
-  /** @type {IntersectionObserver | null} */
-  let sectionObserver = null;
+  let sectionScrollBound = false;
 
   topBtn?.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -221,12 +220,37 @@
   }
 
   function hideSectionNav() {
-    if (sectionObserver) {
-      sectionObserver.disconnect();
-      sectionObserver = null;
-    }
     if (sectionNav) sectionNav.hidden = true;
     if (sectionNavList) sectionNavList.innerHTML = "";
+  }
+
+  function setActiveSectionLink(sectionId) {
+    if (!sectionNavList || !sectionId) return;
+    sectionNavList.querySelectorAll("a").forEach((a) => {
+      a.classList.toggle("is-active", a.dataset.target === sectionId);
+    });
+  }
+
+  function updateActiveSectionFromScroll() {
+    if (!sectionNav || sectionNav.hidden || !resultsEl) return;
+    const sections = [...resultsEl.querySelectorAll(".block[id]")];
+    if (!sections.length) return;
+
+    // Account for fixed footer so the last section can still win.
+    const footerH = document.querySelector(".foot")?.getBoundingClientRect().height || 0;
+    const docBottom = window.scrollY + window.innerHeight;
+    const pageBottom = document.documentElement.scrollHeight - footerH - 24;
+    if (docBottom >= pageBottom) {
+      setActiveSectionLink(sections[sections.length - 1].id);
+      return;
+    }
+
+    const marker = Math.min(160, window.innerHeight * 0.28);
+    let active = sections[0];
+    for (const sec of sections) {
+      if (sec.getBoundingClientRect().top <= marker) active = sec;
+    }
+    setActiveSectionLink(active.id);
   }
 
   function renderSectionNav() {
@@ -251,26 +275,17 @@
         const target = document.getElementById(link.dataset.target);
         if (!target) return;
         target.scrollIntoView({ behavior: "smooth", block: "start" });
-        sectionNavList.querySelectorAll("a").forEach((a) => a.classList.remove("is-active"));
-        link.classList.add("is-active");
+        setActiveSectionLink(link.dataset.target);
         history.replaceState(null, "", `#${link.dataset.target}`);
       });
     });
 
-    if (sectionObserver) sectionObserver.disconnect();
-    sectionObserver = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (!visible?.target?.id) return;
-        sectionNavList.querySelectorAll("a").forEach((a) => {
-          a.classList.toggle("is-active", a.dataset.target === visible.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -55% 0px", threshold: [0.1, 0.25, 0.5] }
-    );
-    sections.forEach((sec) => sectionObserver.observe(sec));
+    if (!sectionScrollBound) {
+      sectionScrollBound = true;
+      window.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
+      window.addEventListener("resize", updateActiveSectionFromScroll, { passive: true });
+    }
+    updateActiveSectionFromScroll();
   }
 
   function occRowHtml(f) {
