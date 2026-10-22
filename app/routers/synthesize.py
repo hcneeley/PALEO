@@ -177,11 +177,22 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
                 total = int(total)
             except (TypeError, ValueError):
                 total = None
+        returned_n = len(raw_feats)
+        end = bool((adapter.data or {}).get("end_of_records"))
+        if total is not None and returned_n >= int(total):
+            end = True
+        has_more = (
+            adapter.status == "ok"
+            and (not end)
+            and returned_n > 0
+            and (total is None or returned_n < int(total))
+        )
         source_totals.append(
             OccurrenceSourceTotal(
                 provider=key,
-                returned=len(raw_feats),
+                returned=returned_n,
                 total=total,
+                has_more=has_more,
             )
         )
 

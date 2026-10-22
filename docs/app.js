@@ -242,23 +242,24 @@
   }
 
   /** Multi-column ICS chronostrat chart (CGMW colors) with range overlays. */
-  function buildAgesChartSvg(layers, intervals, full) {
+  function buildAgesChartSvg(layers, intervals, full, opts = {}) {
     const { older, younger } = agesDomain(layers, full);
     const span = older - younger || 1;
     const padT = 22;
     const padB = 32;
-    const H = 480;
+    const H = Math.max(360, Number(opts.height) || 480);
     const plotTop = padT;
     const plotH = H - padT - padB;
     const yOf = (age) => plotTop + ((age - younger) / span) * plotH;
 
+    // Age rank = chronostratigraphic Stage on ICS charts; always include the column.
     const cols = [
-      { rank: "Eon", w: 44 },
-      { rank: "Era", w: 52 },
-      { rank: "Period", w: 70 },
-      { rank: "Epoch", w: 78 },
-      { rank: "Age", w: span <= 80 ? 86 : 0 },
-    ].filter((c) => c.w > 0);
+      { rank: "Eon", label: "Eon", w: 44 },
+      { rank: "Era", label: "Era", w: 52 },
+      { rank: "Period", label: "Period", w: 70 },
+      { rank: "Epoch", label: "Epoch", w: 78 },
+      { rank: "Age", label: "Stage", w: span <= 120 ? 86 : 64 },
+    ];
 
     let x = 8;
     const headers = [];
@@ -266,12 +267,11 @@
     for (const col of cols) {
       headers.push(
         `<text x="${x + col.w / 2}" y="${padT - 8}" text-anchor="middle" class="ages-track-label">${esc(
-          col.rank
+          col.label
         )}</text>`
       );
-      bands.push(
-        icsColumnBands(col.rank, intervals, younger, older, yOf, x, col.w, col.rank !== "Age" || span <= 40)
-      );
+      // Stage labels when the band is tall enough; dense full-Phanerozoic still has tooltips.
+      bands.push(icsColumnBands(col.rank, intervals, younger, older, yOf, x, col.w, true));
       x += col.w + 2;
     }
 
@@ -372,7 +372,7 @@
     </svg>`;
   }
 
-  function agesPlainTextBlocks(layers, intervals) {
+  function agesPlainTextBlocks(layers, intervals, { listLimit = 8 } = {}) {
     const blocks = [];
     if (layers.bounds.older != null || layers.bounds.younger != null) {
       blocks.push(
@@ -384,13 +384,23 @@
         )
       );
     }
-    // Summarize PBDB as union span + per-row labels when few
     if (layers.pbdb.length) {
       const older = Math.max(...layers.pbdb.map((r) => r.older));
       const younger = Math.min(...layers.pbdb.map((r) => r.younger));
-      blocks.push(chronostratPlainListHtml(older, younger, intervals, `PBDB fossils (${layers.pbdb.length})`));
-      if (layers.pbdb.length <= 8) {
-        const rows = layers.pbdb
+      blocks.push(
+        chronostratPlainListHtml(
+          older,
+          younger,
+          intervals,
+          `PBDB fossil ages (${layers.pbdb.length})`
+        )
+      );
+      const rowsSrc =
+        listLimit == null || layers.pbdb.length <= listLimit
+          ? layers.pbdb
+          : layers.pbdb.slice(0, listLimit);
+      if (rowsSrc.length) {
+        const rows = rowsSrc
           .map((r) => {
             const chrono = resolveChronostratRange(r.older, r.younger, intervals);
             const stage = chrono?.Age || chrono?.Epoch || "—";
@@ -398,17 +408,99 @@
               <span class="item-meta"> · ${esc(stage)} · ${esc(r.label)}</span></li>`;
           })
           .join("");
-        blocks.push(`<ul class="list chrono-occ-list">${rows}</ul>`);
+        const more =
+          listLimit != null && layers.pbdb.length > listLimit
+            ? `<li class="item-meta">…and ${layers.pbdb.length - listLimit} more (open chart for full list)</li>`
+            : "";
+        blocks.push(`<ul class="list chrono-occ-list">${rows}${more}</ul>`);
       }
     }
     if (layers.macro.length) {
       const older = Math.max(...layers.macro.map((r) => r.older));
       const younger = Math.min(...layers.macro.map((r) => r.younger));
       blocks.push(
-        chronostratPlainListHtml(older, younger, intervals, `Macrostrat units (${layers.macro.length})`)
+        chronostratPlainListHtml(
+          older,
+          younger,
+          intervals,
+          `Macrostrat site / unit ages (${layers.macro.length})`
+        )
       );
     }
     return blocks.filter(Boolean).join("");
+  }
+
+  function agesSourceNotesHtml(layers) {
+    const hasQuery = layers.bounds.older != null || layers.bounds.younger != null;
+    const parts = [];
+    if (hasQuery) {
+      parts.push(
+        `<li><span class="ages-leg query">Query</span> — age bounds you entered on the form (Ma).</li>`
+      );
+    }
+    if (layers.pbdb.length) {
+      parts.push(
+        `<li><span class="ages-leg pbdb">PBDB</span> — fossil occurrence ages from the Paleobiology Database (when the organism lived).</li>`
+      );
+    }
+    if (layers.macro.length) {
+      parts.push(
+        `<li><span class="ages-leg macro">Macrostrat</span> — age range of geologic units at sites where the fossil is found (host rock / locality age).</li>`
+      );
+    }
+    if (!parts.length) return "";
+    return `<ul class="ages-notes">${parts.join("")}</ul>`;
+  }
+
+  function refreshAgesCharts() {
+    const { layers, intervals } = agesChartState.payload || {};
+    if (!layers || !intervals) return;
+    const host = document.getElementById("ages-chart-host");
+    if (host) {
+      host.innerHTML = buildAgesChartSvg(layers, intervals, agesChartState.full);
+    }
+    const popHost = document.getElementById("ages-popout-chart");
+    if (popHost) {
+      popHost.innerHTML = buildAgesChartSvg(layers, intervals, agesChartState.full, {
+        height: 720,
+      });
+    }
+    for (const id of ["ages-full-toggle", "ages-popout-full-toggle"]) {
+      const btn = document.getElementById(id);
+      if (btn) btn.textContent = agesChartState.full ? "Zoom to data" : "Full Phanerozoic";
+    }
+  }
+
+  function closeAgesPopout() {
+    const pop = document.getElementById("ages-popout");
+    if (!pop) return;
+    pop.hidden = true;
+    document.body.classList.remove("ages-popout-open");
+  }
+
+  function openAgesPopout() {
+    const pop = document.getElementById("ages-popout");
+    if (!pop || !agesChartState.payload) return;
+    const { layers, intervals } = agesChartState.payload;
+    const chart = document.getElementById("ages-popout-chart");
+    const detail = document.getElementById("ages-popout-detail");
+    const notes = document.getElementById("ages-popout-notes");
+    if (chart) {
+      chart.innerHTML = buildAgesChartSvg(layers, intervals, agesChartState.full, {
+        height: 720,
+      });
+    }
+    if (notes) notes.innerHTML = agesSourceNotesHtml(layers);
+    if (detail) {
+      detail.innerHTML = agesPlainTextBlocks(layers, intervals, { listLimit: null });
+    }
+    const toggle = document.getElementById("ages-popout-full-toggle");
+    if (toggle) {
+      toggle.textContent = agesChartState.full ? "Zoom to data" : "Full Phanerozoic";
+    }
+    pop.hidden = false;
+    document.body.classList.add("ages-popout-open");
+    document.getElementById("ages-popout-close")?.focus();
   }
 
   function agesSectionHtml(data, query, intervals) {
@@ -422,39 +514,76 @@
     const svg = buildAgesChartSvg(layers, intervals, agesChartState.full);
     const legend = [
       hasQuery ? `<span class="ages-leg query">Query bounds</span>` : "",
-      layers.pbdb.length ? `<span class="ages-leg pbdb">PBDB · ${layers.pbdb.length}</span>` : "",
+      layers.pbdb.length
+        ? `<span class="ages-leg pbdb">PBDB · fossil ages (${layers.pbdb.length})</span>`
+        : "",
       layers.macro.length
-        ? `<span class="ages-leg macro">Macrostrat · ${layers.macro.length}</span>`
+        ? `<span class="ages-leg macro">Macrostrat · site ages (${layers.macro.length})</span>`
         : "",
     ]
       .filter(Boolean)
       .join("");
-    const plain = agesPlainTextBlocks(layers, intervals);
+    const plain = agesPlainTextBlocks(layers, intervals, { listLimit: 8 });
+    const notes = agesSourceNotesHtml(layers);
     return `<div class="ages-toolbar">
         <button type="button" class="linkish" id="ages-full-toggle">${
           agesChartState.full ? "Zoom to data" : "Full Phanerozoic"
         }</button>
         <div class="ages-legend">${legend}</div>
       </div>
-      <div id="ages-chart-host" class="ages-chart-host">${svg}</div>
+      ${notes}
+      <button type="button" class="ages-chart-open" id="ages-chart-open" aria-haspopup="dialog" aria-controls="ages-popout">
+        <div id="ages-chart-host" class="ages-chart-host">${svg}</div>
+        <span class="ages-click-hint">Click for more info</span>
+      </button>
       <p class="ages-attribution item-meta">Interval names &amp; colours follow the ICS chronostratigraphic chart (CGMW colouring via Macrostrat international timescales).</p>
-      <div class="ages-plain-wrap">${plain}</div>`;
+      <div class="ages-plain-wrap">${plain}</div>
+      <div id="ages-popout" class="ages-popout" hidden role="dialog" aria-modal="true" aria-labelledby="ages-popout-title">
+        <div class="ages-popout-backdrop" data-ages-close tabindex="-1"></div>
+        <div class="ages-popout-panel">
+          <header class="ages-popout-head">
+            <h3 id="ages-popout-title">Ages · ICS chronostratigraphy</h3>
+            <button type="button" class="ghost ages-popout-close" id="ages-popout-close" aria-label="Close">Close</button>
+          </header>
+          <div class="ages-toolbar">
+            <button type="button" class="linkish" id="ages-popout-full-toggle">${
+              agesChartState.full ? "Zoom to data" : "Full Phanerozoic"
+            }</button>
+            <div class="ages-legend">${legend}</div>
+          </div>
+          <div id="ages-popout-notes" class="ages-popout-notes">${notes}</div>
+          <div id="ages-popout-chart" class="ages-chart-host ages-popout-chart">${svg}</div>
+          <div id="ages-popout-detail" class="ages-plain-wrap ages-popout-detail">${plain}</div>
+        </div>
+      </div>`;
   }
 
   function wireAgesChartToggle() {
-    const btn = document.getElementById("ages-full-toggle");
-    if (!btn || !agesChartState.payload) return;
-    btn.addEventListener("click", () => {
-      agesChartState.full = !agesChartState.full;
-      const host = document.getElementById("ages-chart-host");
-      if (host) {
-        host.innerHTML = buildAgesChartSvg(
-          agesChartState.payload.layers,
-          agesChartState.payload.intervals,
-          agesChartState.full
-        );
-      }
-      btn.textContent = agesChartState.full ? "Zoom to data" : "Full Phanerozoic";
+    if (!agesChartState.payload) return;
+
+    const bindFullToggle = (id) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        agesChartState.full = !agesChartState.full;
+        refreshAgesCharts();
+      });
+    };
+    bindFullToggle("ages-full-toggle");
+    bindFullToggle("ages-popout-full-toggle");
+
+    document.getElementById("ages-chart-open")?.addEventListener("click", () => openAgesPopout());
+    document.getElementById("ages-popout-close")?.addEventListener("click", () => closeAgesPopout());
+    document.querySelector("#ages-popout [data-ages-close]")?.addEventListener("click", () => closeAgesPopout());
+  }
+
+  if (!window.__agesEscWired) {
+    window.__agesEscWired = true;
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      const pop = document.getElementById("ages-popout");
+      if (pop && !pop.hidden) closeAgesPopout();
     });
   }
 
@@ -523,7 +652,13 @@
 
       const totals = data.occurrences.source_totals || [];
       const ti = totals.findIndex((s) => s.provider === "NEOTOMA");
-      const neoTotal = { provider: "NEOTOMA", returned: feats.length, total: null };
+      const neoHasMore = Boolean(body.has_more);
+      const neoTotal = {
+        provider: "NEOTOMA",
+        returned: feats.length,
+        total: body.total != null ? Number(body.total) : null,
+        has_more: neoHasMore,
+      };
       if (ti >= 0) totals[ti] = neoTotal;
       else totals.push(neoTotal);
       data.occurrences.source_totals = totals;
@@ -546,12 +681,23 @@
       if (tbody && feats.length) {
         tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
       }
-      const progress = document.getElementById("occ-progress");
-      if (progress) {
-        const n = (data.occurrences.features || []).length;
-        progress.innerHTML = `Showing <strong>${n.toLocaleString()}</strong> loaded occurrence(s) (Neotoma updated)`;
+      if (paging.ctx) {
+        paging.ctx.loadedRows = (data.occurrences.features || []).length;
+        const neo = paging.ctx.providers?.NEOTOMA;
+        if (neo) {
+          neo.loaded = feats.length;
+          neo.offset = body.next_offset != null ? body.next_offset : feats.length;
+          neo.total = body.total != null ? Number(body.total) : neo.total;
+          neo.hasMore = neoHasMore;
+        }
+        paging.ctx.hasMore = Object.values(paging.ctx.providers || {}).some((p) => p.hasMore);
+        setOccButtons({
+          loadMore: Boolean(paging.ctx.hasMore),
+          loadAll: Boolean(paging.ctx.hasMore),
+          stop: false,
+        });
+        updateOccProgress(formatOccProgress(paging.ctx));
       }
-      if (paging.ctx) paging.ctx.loadedRows = (data.occurrences.features || []).length;
     } catch (err) {
       patchNeotomaDiagnostic(data, "error", String(err.message || err), 0);
       renderStatus(data);
@@ -709,6 +855,16 @@
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
+  }
+
+  /** Mindat formulas use <sub>/<sup> and entities like &middot; — render safely. */
+  function formatFormula(raw) {
+    if (raw == null || raw === "") return "";
+    let s = esc(raw);
+    s = s
+      .replace(/&lt;(\/?)(sub|sup)&gt;/gi, "<$1$2>")
+      .replace(/&amp;(middot|nbsp|deg|times|minus|#x?[0-9a-f]+);/gi, "&$1;");
+    return s;
   }
 
   function occurrenceAvailableCount(data) {
@@ -977,30 +1133,66 @@
       .join(" · ");
   }
 
-  function countGbifFeatures(features) {
-    return (features || []).filter((f) => (f.properties || {}).database_source === "GBIF").length;
+  const PAGEABLE_PROVIDERS = ["GBIF", "PBDB", "NEOTOMA"];
+
+  function countProviderFeatures(features, provider) {
+    return (features || []).filter(
+      (f) => ((f.properties || {}).database_source || "").toUpperCase() === provider
+    ).length;
   }
 
-  function resolveGbifState(features, sourceTotals, pageLimit) {
+  function resolveProviderState(provider, features, sourceTotals, pageLimit) {
     const hasSourceTotals = Array.isArray(sourceTotals) && sourceTotals.length > 0;
     const fromApi = hasSourceTotals
-      ? sourceTotals.find((s) => s.provider === "GBIF")
+      ? sourceTotals.find((s) => s.provider === provider)
       : null;
     const returned = fromApi
       ? Number(fromApi.returned) || 0
-      : countGbifFeatures(features);
+      : countProviderFeatures(features, provider);
     const total = fromApi && fromApi.total != null ? Number(fromApi.total) : null;
     let hasMore;
-    if (total != null && Number.isFinite(total)) {
+    if (fromApi && typeof fromApi.has_more === "boolean") {
+      hasMore = fromApi.has_more;
+    } else if (total != null && Number.isFinite(total)) {
       hasMore = returned < total;
     } else if (!hasSourceTotals) {
-      // Old synthesize payload without source_totals — offer paging and let GBIF decide.
       hasMore = returned > 0;
     } else {
-      // Totals present but GBIF count missing: more likely if this page was full.
       hasMore = returned > 0 && returned >= pageLimit;
     }
-    return { returned, total, hasMore, offset: returned };
+    return { loaded: returned, total, hasMore, offset: returned };
+  }
+
+  function buildProviderStates(features, sourceTotals, pageLimit) {
+    const providers = {};
+    for (const p of PAGEABLE_PROVIDERS) {
+      providers[p] = resolveProviderState(p, features, sourceTotals, pageLimit);
+    }
+    return providers;
+  }
+
+  function anyProviderHasMore(providers) {
+    return Object.values(providers || {}).some((p) => p && p.hasMore);
+  }
+
+  function formatProviderLoads(providers) {
+    return PAGEABLE_PROVIDERS.map((name) => {
+      const p = providers[name];
+      if (!p || (!p.loaded && !p.hasMore && p.total == null)) return null;
+      if (p.loaded <= 0 && !p.hasMore) return null;
+      const totalPart =
+        p.total != null ? ` of ${Number(p.total).toLocaleString()}` : p.hasMore ? "+" : "";
+      return `${name} <strong>${p.loaded.toLocaleString()}</strong>${totalPart}`;
+    })
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  function formatOccProgress(ctx, prefix = "Showing") {
+    const loads = formatProviderLoads(ctx.providers || {});
+    return `${prefix} <strong>${ctx.loadedRows.toLocaleString()}</strong> loaded occurrence(s)${
+      loads ? ` · ${loads}` : ""
+    }.`;
   }
 
   function renderResults(data, limit = DEFAULT_LIMIT, opts = {}) {
@@ -1041,7 +1233,8 @@
         }
       }
     }
-    const gbif = resolveGbifState(features, sourceTotals, show);
+    const providers = buildProviderStates(features, sourceTotals, show);
+    const canPage = anyProviderHasMore(providers);
 
     const nameHtml = parses.length
       ? `<ul class="list">${parses
@@ -1125,13 +1318,8 @@
       ? `<a class="occ-link" href="${esc(data.occurrences.view_all_url)}" target="_blank" rel="noopener">Full JSON response</a>`
       : "";
     const totalsLine = formatTotals(sourceTotals, features);
-    const canPageGbif = Boolean(gbif.hasMore);
-    const noMoreMsg =
-      gbif.returned === 0
-        ? `<span class="sub">No GBIF occurrences in this result to page.</span>`
-        : `<span class="sub">No further GBIF pages for this query (loaded ${gbif.returned}${
-            gbif.total != null ? ` of ${Number(gbif.total).toLocaleString()}` : ""
-          }).</span>`;
+    const loadsLine = formatProviderLoads(providers);
+    const noMoreMsg = `<span class="sub">No further occurrence pages for this query.</span>`;
 
     const occHtml = features.length
       ? `<div class="table-wrap"><table>
@@ -1139,14 +1327,12 @@
           <tbody id="occ-tbody">${features.map(occRowHtml).join("")}</tbody>
         </table></div>
         <p class="occ-progress" id="occ-progress">Showing <strong>${features.length}</strong> loaded occurrence(s)${
-          gbif.total != null
-            ? ` · GBIF <strong>${gbif.returned.toLocaleString()}</strong> of <strong>${Number(gbif.total).toLocaleString()}</strong>`
-            : ""
+          loadsLine ? ` · ${loadsLine}` : ""
         }</p>
         <p class="occ-links" id="occ-links">
           ${
-            canPageGbif
-              ? `<button type="button" class="linkish" id="occ-load-more">Load more GBIF</button>
+            canPage
+              ? `<button type="button" class="linkish" id="occ-load-more">Load more</button>
                  <button type="button" class="linkish" id="occ-load-all" hidden>Continue loading</button>
                  <button type="button" class="linkish" id="occ-stop" hidden>Stop</button>`
               : noMoreMsg
@@ -1190,7 +1376,7 @@
             .map(
               (m) => `<li>
                 <div class="item-title">${esc(m.name || "Mineral")}</div>
-                <div class="item-meta">${esc(m.formula || "")}${
+                <div class="item-meta formula">${formatFormula(m.formula)}${
                   m.url ? ` · <a href="${esc(m.url)}" target="_blank" rel="noopener">Mindat</a>` : ""
                 }</div>
               </li>`
@@ -1295,14 +1481,12 @@
     paging.ctx = {
       apiBase: opts.apiBase,
       query: opts.query,
-      offset: gbif.offset,
-      total: gbif.total,
-      hasMore: gbif.hasMore,
+      providers,
+      hasMore: canPage,
       loadedRows: features.length,
-      gbifLoaded: gbif.returned,
     };
 
-    wireOccControls(Boolean(opts.loadAll) && gbif.hasMore);
+    wireOccControls(Boolean(opts.loadAll) && canPage);
   }
 
   function setOccButtons({ loadMore, loadAll, stop }) {
@@ -1371,11 +1555,11 @@
     };
   }
 
-  async function fetchGbifDirect(ctx) {
-    const q = ctx.query || {};
+  async function fetchGbifDirect(state, query) {
+    const q = query || {};
     const qs = new URLSearchParams();
     qs.set("limit", String(PAGE_SIZE));
-    qs.set("offset", String(ctx.offset));
+    qs.set("offset", String(state.offset));
     qs.set("hasCoordinate", "true");
     if (q.taxon) qs.set("scientificName", q.taxon);
     if (q.lat && q.lng) {
@@ -1389,7 +1573,7 @@
     }
     const features = (payload.results || []).map(mapGbifRecord);
     const total = payload.count != null ? Number(payload.count) : null;
-    const nextOffset = ctx.offset + features.length;
+    const nextOffset = state.offset + features.length;
     const end = Boolean(payload.endOfRecords) || (total != null && nextOffset >= total);
     const windowHit = nextOffset >= 100000;
     const hasMore = !end && features.length > 0 && !windowHit && (total == null || nextOffset < total);
@@ -1399,17 +1583,18 @@
       features,
       returned: features.length,
       total,
-      offset: ctx.offset,
+      offset: state.offset,
       next_offset: hasMore ? nextOffset : null,
       has_more: hasMore,
       window_exhausted: windowHit && total != null && total > 100000,
     };
   }
 
-  async function fetchOccPage(ctx) {
+  async function fetchOccPage(ctx, provider) {
+    const state = ctx.providers[provider];
     const qs = new URLSearchParams();
-    qs.set("provider", "GBIF");
-    qs.set("offset", String(ctx.offset));
+    qs.set("provider", provider);
+    qs.set("offset", String(state.offset));
     qs.set("limit", String(PAGE_SIZE));
     const q = ctx.query || {};
     if (q.taxon) qs.set("taxon", q.taxon);
@@ -1420,97 +1605,91 @@
     if (q.ageMax) qs.set("age_max", q.ageMax);
 
     const resp = await fetch(`${ctx.apiBase}/api/v1/occurrences?${qs.toString()}`);
-    if (resp.status === 404) {
-      // Render may still be on a build without /occurrences — page GBIF directly.
-      return fetchGbifDirect(ctx);
+    if (resp.status === 404 && provider === "GBIF") {
+      return fetchGbifDirect(state, q);
     }
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok || body.status !== "success") {
-      throw new Error(formatApiError(body) || body.detail || `HTTP ${resp.status}`);
+      throw new Error(
+        `${provider}: ${formatApiError(body) || body.detail || `HTTP ${resp.status}`}`
+      );
     }
     return body;
+  }
+
+  function applyPageToProvider(ctx, provider, page) {
+    const state = ctx.providers[provider];
+    const feats = page.features || [];
+    state.loaded += feats.length;
+    state.offset = page.next_offset != null ? page.next_offset : state.offset + (page.returned || feats.length);
+    if (page.total != null) state.total = page.total;
+    state.hasMore = Boolean(page.has_more);
+    if (page.window_exhausted) state.hasMore = false;
+    return feats;
   }
 
   async function runPaging({ continuous }) {
     if (!paging.ctx || paging.busy) return;
     const ctx = paging.ctx;
-    if (!ctx.hasMore) return;
+    if (!anyProviderHasMore(ctx.providers)) return;
 
     paging.busy = true;
     paging.cancel = false;
     setOccButtons({ loadMore: false, loadAll: false, stop: true });
 
     const tbody = document.getElementById("occ-tbody");
+    let windowNote = "";
     try {
       do {
         if (paging.cancel) break;
         if (ctx.loadedRows >= SOFT_CAP) {
           updateOccProgress(
-            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> rows · GBIF loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
-              ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-            }. Continue to load more, or browse GBIF for the full catalog.`
+            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> rows · ${formatProviderLoads(
+              ctx.providers
+            )}. Continue to load more, or use browse links for the full catalogs.`
           );
           setOccButtons({ loadMore: true, loadAll: true, stop: false });
           paging.busy = false;
           return;
         }
 
+        const due = PAGEABLE_PROVIDERS.filter((p) => ctx.providers[p]?.hasMore);
+        if (!due.length) break;
+
         updateOccProgress(
-          `Paging GBIF… loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
-            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-          }`
+          `Paging ${due.join(", ")}… showing <strong>${ctx.loadedRows.toLocaleString()}</strong> · ${formatProviderLoads(
+            ctx.providers
+          )}`
         );
 
-        const page = await fetchOccPage(ctx);
-        const feats = page.features || [];
-        if (tbody && feats.length) {
-          tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
-        }
-        ctx.loadedRows += feats.length;
-        ctx.gbifLoaded += feats.length;
-        ctx.offset = page.next_offset != null ? page.next_offset : ctx.offset + feats.length;
-        ctx.total = page.total != null ? page.total : ctx.total;
-        ctx.hasMore = Boolean(page.has_more);
-
-        if (page.window_exhausted) {
-          updateOccProgress(
-            `Loaded <strong>${ctx.gbifLoaded.toLocaleString()}</strong> GBIF rows (search API window max 100,000). Catalog total <strong>${
-              ctx.total != null ? Number(ctx.total).toLocaleString() : "?"
-            }</strong> — use Browse all on GBIF for the rest.`
-          );
-          break;
+        const pages = await Promise.all(due.map((p) => fetchOccPage(ctx, p)));
+        for (let i = 0; i < due.length; i++) {
+          const provider = due[i];
+          const page = pages[i];
+          const feats = applyPageToProvider(ctx, provider, page);
+          if (tbody && feats.length) {
+            tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
+          }
+          ctx.loadedRows += feats.length;
+          if (page.window_exhausted) {
+            windowNote = ` GBIF search API window max 100,000 — use Browse all on GBIF for the rest.`;
+          }
         }
 
+        ctx.hasMore = anyProviderHasMore(ctx.providers);
         if (!continuous) break;
       } while (ctx.hasMore && !paging.cancel);
 
       if (paging.cancel) {
-        updateOccProgress(
-          `Stopped. Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> rows · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
-            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-          }.`
-        );
-      } else if (!ctx.hasMore) {
-        updateOccProgress(
-          `Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> loaded occurrence(s) · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
-            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-          }${
-            ctx.total != null && ctx.gbifLoaded < ctx.total
-              ? " (remaining beyond search API — use browse link)"
-              : ""
-          }.`
-        );
+        updateOccProgress(`Stopped. ${formatOccProgress(ctx)}${windowNote}`);
       } else {
-        updateOccProgress(
-          `Showing <strong>${ctx.loadedRows.toLocaleString()}</strong> rows · GBIF <strong>${ctx.gbifLoaded.toLocaleString()}</strong>${
-            ctx.total != null ? ` of <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-          }.`
-        );
+        updateOccProgress(`${formatOccProgress(ctx)}${windowNote}`);
       }
     } catch (err) {
       updateOccProgress(`Paging error: ${esc(err.message || err)}`);
     } finally {
       paging.busy = false;
+      ctx.hasMore = anyProviderHasMore(ctx.providers);
       setOccButtons({
         loadMore: Boolean(ctx.hasMore),
         loadAll: Boolean(ctx.hasMore),

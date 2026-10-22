@@ -123,6 +123,7 @@ class OccurrenceSourceTotal(BaseModel):
     provider: str
     returned: int = 0
     total: int | None = None
+    has_more: bool = False
 
 
 class OccurrencesBlock(BaseModel):

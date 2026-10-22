@@ -32,19 +32,29 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     if not params.taxon and (params.lat is None or params.lng is None):
-        return AdapterResult(provider="PBDB", status="skipped", data={"features": []})
+        return AdapterResult(
+            provider="PBDB",
+            status="skipped",
+            data={
+                "features": [],
+                "total_count": None,
+                "offset": 0,
+                "end_of_records": True,
+                "fetched": 0,
+            },
+        )
 
-    # Fetch a wider taxon list (or all near point without broken circle WKT),
-    # then optionally filter by radius client-side.
+    page = min(params.result_limit(), 300)
+    offset = params.result_offset()
+
     q: dict = {
         "show": "coords,attr,class,paleoloc",
-        "limit": max(params.result_limit() * 4, 100),
+        "limit": page,
+        "offset": offset,
     }
     if params.taxon:
         q["base_name"] = params.taxon
     elif params.lat is not None and params.lng is not None:
-        # Bounding box approx for radius_km when no taxon
-        # ~111 km per degree latitude
         r = params.radius_km or settings.default_radius_km
         dlat = r / 111.0
         dlng = r / (111.0 * max(math.cos(math.radians(params.lat)), 0.2))
@@ -61,10 +71,11 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     resp = await client.get(PBDB_OCCS, params=q)
     resp.raise_for_status()
     payload = resp.json()
+    raw = payload.get("records") or []
 
     radius = params.radius_km or settings.default_radius_km
     features = []
-    for rec in payload.get("records") or []:
+    for rec in raw:
         oid = (rec.get("oid") or "").replace("occ:", "") or rec.get("oid")
         lat, lng = _f(rec.get("lat")), _f(rec.get("lng"))
         if (
@@ -80,7 +91,6 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         if lat is not None and lng is not None:
             geometry = {"type": "Point", "coordinates": [lng, lat]}
         max_ma, min_ma = _f(rec.get("eag")), _f(rec.get("lag"))
-        # Compact: pla/pln; verbose: paleolat/paleolng (show=paleoloc)
         paleolat = _f(rec.get("pla") if rec.get("pla") is not None else rec.get("paleolat"))
         paleolng = _f(rec.get("pln") if rec.get("pln") is not None else rec.get("paleolng"))
         event = None
@@ -104,7 +114,18 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                 },
             }
         )
-        if len(features) >= params.result_limit():
-            break
 
-    return AdapterResult(provider="PBDB", status="ok", data={"features": features})
+    # PBDB has no catalog total; a short page means we're done.
+    fetched = len(raw)
+    end = fetched < page
+    return AdapterResult(
+        provider="PBDB",
+        status="ok",
+        data={
+            "features": features,
+            "total_count": None,
+            "offset": offset,
+            "end_of_records": end,
+            "fetched": fetched,
+        },
+    )

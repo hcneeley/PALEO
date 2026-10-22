@@ -34,7 +34,7 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             provider="GBIF",
             status="skipped",
             error="taxon and/or lat+lng required",
-            data={"features": []},
+            data={"features": [], "total_count": None, "offset": 0, "end_of_records": True, "fetched": 0},
         )
 
     # GBIF search window: offset + limit must be ≤ 100_000; page size ≤ 300.
@@ -46,7 +46,13 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         return AdapterResult(
             provider="GBIF",
             status="ok",
-            data={"features": [], "total_count": None, "offset": offset, "end_of_records": True},
+            data={
+                "features": [],
+                "total_count": None,
+                "offset": offset,
+                "end_of_records": True,
+                "fetched": 0,
+            },
         )
 
     q: dict = {
@@ -100,8 +106,9 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
         )
 
     total = payload.get("count")
-    end = bool(payload.get("endOfRecords")) or (offset + len(features) >= 100_000)
-    if isinstance(total, int) and offset + len(features) >= total:
+    fetched = len(payload.get("results") or [])
+    end = bool(payload.get("endOfRecords")) or (offset + fetched >= 100_000)
+    if isinstance(total, int) and offset + fetched >= total:
         end = True
 
     return AdapterResult(
@@ -112,5 +119,6 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             "total_count": total,
             "offset": offset,
             "end_of_records": end,
+            "fetched": fetched,
         },
     )

@@ -443,6 +443,17 @@ button.ghost:hover {
   margin-top: 0.15rem;
 }
 
+.item-meta.formula {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: normal;
+}
+
+.item-meta.formula sub,
+.item-meta.formula sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
 .item-meta a,
 .list a {
   color: var(--mint);
@@ -760,6 +771,21 @@ button.linkish:hover {
   color: var(--muted);
 }
 
+.ages-notes {
+  margin: 0 0 0.85rem;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.ages-notes .ages-leg {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .ages-leg::before {
   content: "";
   display: inline-block;
@@ -782,9 +808,40 @@ button.linkish:hover {
   background: #9aafa3;
 }
 
+.ages-chart-open {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: zoom-in;
+}
+
+.ages-chart-open:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+.ages-chart-open:hover .ages-svg {
+  border-color: rgba(111, 191, 166, 0.55);
+}
+
+.ages-click-hint {
+  display: block;
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--mint);
+}
+
 .ages-chart-host {
   overflow-x: auto;
-  margin: 0 0 0.25rem;
+  margin: 0;
 }
 
 .ages-svg {
@@ -794,6 +851,7 @@ button.linkish:hover {
   background: rgba(12, 18, 16, 0.35);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  pointer-events: none;
 }
 
 .ages-tick,
@@ -830,6 +888,74 @@ button.linkish:hover {
 .ages-plain-wrap .chrono-plain {
   margin-top: 0;
   padding-top: 0.65rem;
+}
+
+body.ages-popout-open {
+  overflow: hidden;
+}
+
+.ages-popout {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.ages-popout[hidden] {
+  display: none;
+}
+
+.ages-popout-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 9, 0.72);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.ages-popout-panel {
+  position: relative;
+  z-index: 1;
+  width: min(1100px, 100%);
+  max-height: min(92vh, 960px);
+  overflow: auto;
+  padding: 1rem 1.15rem 1.35rem;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--bg1);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.ages-popout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.ages-popout-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.ages-popout-chart .ages-svg {
+  width: 100%;
+  max-width: none;
+  pointer-events: auto;
+}
+
+.ages-popout-notes {
+  margin-bottom: 0.85rem;
+}
+
+.ages-popout-detail {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
 }
 
 .chrono-occ-list {
