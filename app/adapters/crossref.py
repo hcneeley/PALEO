@@ -92,9 +92,12 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     if mailto:
         q["mailto"] = mailto
 
+    ua = "UPAE/0.1 (https://github.com/hcneeley/upae)"
+    if mailto:
+        ua = f"{ua}; mailto:{mailto}"
     headers = {
         "Accept": "application/json",
-        "User-Agent": f"UPAE/0.1 (https://github.com/hcneeley/upae; mailto:{mailto or 'hcneeley@icloud.com'})",
+        "User-Agent": ua,
     }
     client = get_client()
     resp = await client.get(CROSSREF_WORKS, params=q, headers=headers)

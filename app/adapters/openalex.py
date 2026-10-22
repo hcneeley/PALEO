@@ -74,22 +74,25 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
     mailto = (
         (os.environ.get("OPENALEX_MAILTO") or "").strip()
         or (os.environ.get("CROSSREF_MAILTO") or "").strip()
-        or "hcneeley@icloud.com"
     )
     api_key = (os.environ.get("OPENALEX_API_KEY") or "").strip()
     q: dict[str, Any] = {
         "search": params.taxon,
         "per_page": min(params.result_limit(), 25),
-        "mailto": mailto,
         # OR values for one field: type:article|review (not type:article|type:review)
         "filter": "type:article|review",
     }
+    if mailto:
+        q["mailto"] = mailto
     if api_key:
         q["api_key"] = api_key
 
+    ua = "UPAE/0.1 (https://github.com/hcneeley/upae)"
+    if mailto:
+        ua = f"{ua}; mailto:{mailto}"
     headers = {
         "Accept": "application/json",
-        "User-Agent": f"UPAE/0.1 (https://github.com/hcneeley/upae; mailto:{mailto})",
+        "User-Agent": ua,
     }
     client = get_client()
     resp = await client.get(OPENALEX_WORKS, params=q, headers=headers)
