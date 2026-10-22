@@ -290,7 +290,7 @@
 
     // Age rank = chronostratigraphic Stage on ICS charts; always include the column.
     const cols = [
-      { rank: "Eon", label: "Eon", w: 44 },
+      { rank: "Eon", label: "Eon", w: 62 },
       { rank: "Era", label: "Era", w: 52 },
       { rank: "Period", label: "Period", w: 70 },
       { rank: "Epoch", label: "Epoch", w: 78 },
