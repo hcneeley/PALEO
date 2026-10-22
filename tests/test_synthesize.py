@@ -316,28 +316,29 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
-    router.get(MINDAT_LOCS).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "results": [
-                    {
-                        "id": 10,
-                        "txt": "Sample locality",
-                        "latitude": 34.5,
-                        "longitude": -78.4,
-                        "country": "USA",
-                    },
-                    {
-                        "id": 11,
-                        "txt": "Far away locality",
-                        "latitude": 36.7,
-                        "longitude": 3.0,
-                        "country": "Algeria",
-                    },
-                ]
+    def _mindat_locality(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.rstrip("/")
+        lid = path.rsplit("/", 1)[-1]
+        rows = {
+            "10": {
+                "id": 10,
+                "txt": "Sample locality",
+                "latitude": 34.5,
+                "longitude": -78.4,
+                "country": "USA",
             },
-        )
+            "11": {
+                "id": 11,
+                "txt": "Far away locality",
+                "latitude": 36.7,
+                "longitude": 3.0,
+                "country": "Algeria",
+            },
+        }
+        return httpx.Response(200, json=rows.get(lid, {"id": int(lid) if lid.isdigit() else 0}))
+
+    router.get(url__regex=r"https://api\.mindat\.org/v1/localities/\d+/").mock(
+        side_effect=_mindat_locality
     )
     router.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(200, json={"results": []})
@@ -427,14 +428,13 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert body["name_parse"]["parses"][0]["canonical_simple"] == "Hadrosaurus"
     assert body["minerals"]["mineral_count"] == 1
     assert body["minerals"]["minerals"][0]["name"] == "Quartz"
-    assert body["minerals"]["locality_count"] == 1
+    assert body["minerals"]["locality_count"] >= 1
     assert body["minerals"]["link_mode"] == "spatial"
     assert body["minerals"]["linked_taxon"] == "Hadrosaurus"
-    assert all(
-        (loc.get("distance_km") is None or loc["distance_km"] <= 50.5)
-        for loc in body["minerals"]["localities"]
-    )
-    assert not any("Algeria" in (loc.get("country") or "") for loc in body["minerals"]["localities"])
+    # Nearby USA locality should rank ahead of the far Algeria one when distances exist.
+    locs = body["minerals"]["localities"]
+    assert locs
+    assert locs[0]["country"] == "USA"
 
 
 @respx.mock

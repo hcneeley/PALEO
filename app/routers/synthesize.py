@@ -395,10 +395,14 @@ async def synthesize(
     if params.lat is None or params.lng is None:
         centroid = _coords_from_occurrences(results)
         if centroid is not None:
+            # Occurrence centroids are approximate — keep a usable Mindat/Macrostrat window.
+            derived_radius = params.radius_km
+            if derived_radius is None or derived_radius < 50:
+                derived_radius = max(float(settings.default_radius_km), 100.0)
             geo_params = QueryParams(
                 lat=centroid[0],
                 lng=centroid[1],
-                radius_km=params.radius_km,
+                radius_km=derived_radius,
                 taxon=params.taxon,
                 age_min=params.age_min,
                 age_max=params.age_max,
