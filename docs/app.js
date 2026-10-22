@@ -28,7 +28,7 @@
   /** @type {Array<{name:string,rank:string,t_age:number,b_age:number,color:string}>|null} */
   let icsIntervals = null;
   let icsLoadPromise = null;
-  const CHRONO_RANKS = ["Eonothem", "Erathem", "System", "Series", "Stage"];
+  const CHRONO_RANKS = ["Eon", "Era", "Period", "Epoch", "Age"];
   const PHANEROZOIC_OLDER = 541;
   /** @type {{ full: boolean, payload: object | null }} */
   const agesChartState = { full: false, payload: null };
@@ -36,7 +36,7 @@
   function loadIcsIntervals() {
     if (icsIntervals) return Promise.resolve(icsIntervals);
     if (!icsLoadPromise) {
-      icsLoadPromise = fetch("./ics-intervals.json?v=neotoma-ics-v3")
+      icsLoadPromise = fetch("./ics-intervals.json?v=geo-ranks-v1")
         .then((r) => (r.ok ? r.json() : { intervals: [] }))
         .then((j) => {
           icsIntervals = Array.isArray(j.intervals) ? j.intervals : [];
@@ -253,11 +253,11 @@
     const yOf = (age) => plotTop + ((age - younger) / span) * plotH;
 
     const cols = [
-      { rank: "Eonothem", w: 44 },
-      { rank: "Erathem", w: 52 },
-      { rank: "System", w: 70 },
-      { rank: "Series", w: 78 },
-      { rank: "Stage", w: span <= 80 ? 86 : 0 },
+      { rank: "Eon", w: 44 },
+      { rank: "Era", w: 52 },
+      { rank: "Period", w: 70 },
+      { rank: "Epoch", w: 78 },
+      { rank: "Age", w: span <= 80 ? 86 : 0 },
     ].filter((c) => c.w > 0);
 
     let x = 8;
@@ -270,7 +270,7 @@
         )}</text>`
       );
       bands.push(
-        icsColumnBands(col.rank, intervals, younger, older, yOf, x, col.w, col.rank !== "Stage" || span <= 40)
+        icsColumnBands(col.rank, intervals, younger, older, yOf, x, col.w, col.rank !== "Age" || span <= 40)
       );
       x += col.w + 2;
     }
@@ -393,7 +393,7 @@
         const rows = layers.pbdb
           .map((r) => {
             const chrono = resolveChronostratRange(r.older, r.younger, intervals);
-            const stage = chrono?.Stage || chrono?.Series || "—";
+            const stage = chrono?.Age || chrono?.Epoch || "—";
             return `<li><span class="chrono-ma">${esc(formatMaPair(r.older, r.younger))}</span>
               <span class="item-meta"> · ${esc(stage)} · ${esc(r.label)}</span></li>`;
           })
@@ -510,7 +510,14 @@
         return;
       }
 
-      const feats = Array.isArray(body.features) ? body.features : [];
+      const feats = (Array.isArray(body.features) ? body.features : []).filter((f) => {
+        const p = f?.properties || {};
+        const coords = f?.geometry?.coordinates;
+        const hasCoords = Array.isArray(coords) && coords.length >= 2;
+        const hasName = Boolean(p.taxon_name || p.accepted_name);
+        const hasId = Boolean(p.occurrence_id);
+        return hasCoords && (hasName || hasId);
+      });
       data.occurrences = data.occurrences || { features: [], source_totals: [] };
       data.occurrences.features = [...(data.occurrences.features || []), ...feats];
 

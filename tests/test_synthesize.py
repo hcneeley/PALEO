@@ -148,10 +148,18 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             json={
                 "data": [
                     {
-                        "occurrenceid": 7,
-                        "taxon": {"taxonname": "Hadrosaurus"},
-                        "site": {"latitude": 40.0, "longitude": -75.0},
-                    }
+                        "occid": 7,
+                        "sample": {"taxonid": 99, "taxonname": "Hadrosaurus"},
+                        "age": {"ageolder": 83000000, "ageyounger": 72000000},
+                        "site": {
+                            "sitename": "Test site",
+                            "location": (
+                                '{"type":"Point","coordinates":[-75.0,40.0]}'
+                            ),
+                        },
+                    },
+                    # Hollow row — must be dropped by the adapter
+                    {"sample": {}, "site": {}, "age": {}},
                 ]
             },
         )
