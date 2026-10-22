@@ -136,11 +136,17 @@
       <section id="results" class="results" hidden></section>
     </main>
     <footer class="foot">
-      <div class="foot-links">
-        <a href="https://upae-ff1k.onrender.com/api/v1/">API</a>
-        <a href="https://github.com/hcneeley/upae">GitHub</a>
+      <div class="foot-main">
+        <div class="foot-links">
+          <a href="https://upae-ff1k.onrender.com/api/v1/">API</a>
+          <a href="https://github.com/hcneeley/upae">GitHub</a>
+        </div>
+        <button type="button" id="top-btn" class="top-btn ghost">Top of page</button>
       </div>
-      <button type="button" id="top-btn" class="top-btn ghost">Top of page</button>
+      <p class="foot-note">
+        GBIF progressive load is capped at 100,000 occurrences via their search API.
+        Larger catalogs need Browse all on GBIF (download / portal).
+      </p>
     </footer>
     <script src="./app.js"></script>
   </body>
