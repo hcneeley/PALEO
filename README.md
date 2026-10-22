@@ -59,9 +59,10 @@ Uses [`https://parser.globalnames.org/api/v1/`](https://parser.globalnames.org/d
 
 Links minerals to taxonomic queries **by place**, not by name:
 
-- With `lat`/`lng`: [`geomin-point`](https://api.mindat.org/v1/schema/redoc/) / `geoloc-point` within `radius_km` → minerals & localities near the search area (`minerals.link_mode: spatial`).
+- With `lat`/`lng`: [`geomin-point`](https://api.mindat.org/v1/schema/redoc/) / `geoloc-point` within `radius_km` → hydrate via `geomaterials/?id_in=` and `localities/?id_in=` (`minerals.link_mode: spatial`).
 - Taxon only (no coordinates): after PBDB/GBIF/Neotoma return, uses the occurrence centroid for the same spatial join when possible.
 - Mineral-name queries (no useful coords): falls back to `geomaterials-search`.
+- Batch filters use `id_in` (not Django `id__in`); `fields=` names must match the [schema](https://api.mindat.org/v1/schema/redoc/#tag/v1/operation/v1_geomaterials_list) exactly.
 
 Requires `MINDAT_API_KEY`. Without a key, the adapter reports `skipped`.
 

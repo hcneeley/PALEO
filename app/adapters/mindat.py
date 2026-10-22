@@ -24,6 +24,9 @@ from ..secrets import mindat_api_key
 from .base import AdapterResult, QueryParams
 
 MINDAT_BASE = "https://api.mindat.org/v1/"
+# Field names must match the schema exactly (misspellings are ignored → full payload).
+# https://api.mindat.org/v1/schema/redoc/#tag/v1/operation/v1_geomaterials_list
+# https://github.com/ChuBL/How-to-Use-Mindat-API
 MINERAL_FIELDS = "id,name,mindat_formula,ima_formula,csystem,hmin,hmax,ima_status"
 
 
@@ -122,31 +125,6 @@ def _locality_ids_from_geomin(payload: Any) -> list[int]:
     return seen
 
 
-async def _fetch_mineral(
-    client: httpx.AsyncClient,
-    headers: dict[str, str],
-    mid: int,
-    *,
-    link_mode: str,
-) -> dict[str, Any] | None:
-    try:
-        resp = await client.get(
-            MINDAT_BASE + f"geomaterials/{mid}/",
-            params={"fields": MINERAL_FIELDS, "format": "json"},
-            headers=headers,
-            timeout=min(settings.timeout_for("MINDAT"), 8.0),
-        )
-        if resp.status_code >= 400:
-            return None
-        body = resp.json()
-        rows = _results(body) or ([body] if isinstance(body, dict) else [])
-        if not rows:
-            return None
-        return _normalize_mineral(rows[0], link_mode=link_mode)
-    except httpx.HTTPError:
-        return None
-
-
 async def _hydrate_minerals(
     client: httpx.AsyncClient,
     headers: dict[str, str],
@@ -155,46 +133,47 @@ async def _hydrate_minerals(
     link_mode: str,
     limit: int,
 ) -> list[dict[str, Any]]:
+    """Batch-fetch geomaterials via list ``id_in`` (not ``id__in``).
+
+    Docs: https://api.mindat.org/v1/schema/redoc/#tag/v1/operation/v1_geomaterials_list
+    """
     ids = mineral_ids[:limit]
     if not ids:
         return []
-    rows = await asyncio.gather(
-        *[_fetch_mineral(client, headers, mid, link_mode=link_mode) for mid in ids]
-    )
-    return [r for r in rows if r is not None]
-
-
-async def _fetch_locality(
-    client: httpx.AsyncClient,
-    headers: dict[str, str],
-    lid: int,
-    *,
-    link_mode: str,
-    origin: tuple[float, float] | None,
-) -> dict[str, Any] | None:
     try:
-        # Omit fields= — some Mindat locality records zero out lat/lng when projected.
         resp = await client.get(
-            MINDAT_BASE + f"localities/{lid}/",
-            params={"format": "json"},
+            MINDAT_BASE + "geomaterials/",
+            params={
+                "id_in": ",".join(str(i) for i in ids),
+                "fields": MINERAL_FIELDS,
+                "page_size": min(len(ids), 50),
+                "page": 1,
+                "format": "json",
+            },
             headers=headers,
-            timeout=min(settings.timeout_for("MINDAT"), 8.0),
+            timeout=min(settings.timeout_for("MINDAT"), 15.0),
         )
         if resp.status_code >= 400:
-            return None
-        body = resp.json()
-        rows = _results(body) or ([body] if isinstance(body, dict) else [])
-        if not rows:
-            return None
-        loc = _normalize_locality(rows[0], link_mode=link_mode)
-        if origin and loc.get("lat") is not None and loc.get("lon") is not None:
-            loc["distance_km"] = round(
-                _haversine_km(origin[0], origin[1], float(loc["lat"]), float(loc["lon"])),
-                2,
+            return []
+        wanted = set(ids)
+        out: list[dict[str, Any]] = []
+        for row in _results(resp.json()):
+            mid = row.get("id")
+            if mid is None or int(mid) not in wanted:
+                continue
+            out.append(_normalize_mineral(row, link_mode=link_mode))
+        # Preserve geomin order when possible.
+        order = {mid: i for i, mid in enumerate(ids)}
+        out.sort(
+            key=lambda m: order.get(
+                int(str(m.get("mineral_id") or "").rsplit(":", 1)[-1]), 10**9
             )
-        return loc
+            if str(m.get("mineral_id") or "").rsplit(":", 1)[-1].isdigit()
+            else 10**9
+        )
+        return out
     except httpx.HTTPError:
-        return None
+        return []
 
 
 async def _hydrate_localities(
@@ -206,26 +185,45 @@ async def _hydrate_localities(
     limit: int,
     origin: tuple[float, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch localities by id.
-
-    Mindat's list endpoint ignores ``id__in`` / ``id`` filters (returns an
-    unrelated first page), so we hydrate via ``GET localities/{id}/``.
-    """
+    """Batch-fetch localities via list ``id_in`` (Django-style ``id__in`` is ignored)."""
     ids = loc_ids[:limit]
     if not ids:
         return []
-    rows = await asyncio.gather(
-        *[
-            _fetch_locality(client, headers, lid, link_mode=link_mode, origin=origin)
-            for lid in ids
-        ]
-    )
-    out = [r for r in rows if r is not None]
-    if origin:
-        out.sort(
-            key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else 1e12
+    try:
+        resp = await client.get(
+            MINDAT_BASE + "localities/",
+            params={
+                "id_in": ",".join(str(i) for i in ids),
+                "fields": "id,txt,latitude,longitude,country",
+                "page_size": min(len(ids), 50),
+                "page": 1,
+                "format": "json",
+            },
+            headers=headers,
+            timeout=min(settings.timeout_for("MINDAT"), 15.0),
         )
-    return out
+        if resp.status_code >= 400:
+            return []
+        wanted = set(ids)
+        out: list[dict[str, Any]] = []
+        for row in _results(resp.json()):
+            lid = row.get("id")
+            if lid is None or int(lid) not in wanted:
+                continue
+            loc = _normalize_locality(row, link_mode=link_mode)
+            if origin and loc.get("lat") is not None and loc.get("lon") is not None:
+                loc["distance_km"] = round(
+                    _haversine_km(origin[0], origin[1], float(loc["lat"]), float(loc["lon"])),
+                    2,
+                )
+            out.append(loc)
+        if origin:
+            out.sort(
+                key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else 1e12
+            )
+        return out
+    except httpx.HTTPError:
+        return []
 
 
 async def fetch_spatial(

@@ -316,29 +316,46 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             },
         )
     )
-    def _mindat_locality(request: httpx.Request) -> httpx.Response:
-        path = request.url.path.rstrip("/")
-        lid = path.rsplit("/", 1)[-1]
-        rows = {
-            "10": {
-                "id": 10,
-                "txt": "Sample locality",
-                "latitude": 34.5,
-                "longitude": -78.4,
-                "country": "USA",
+    router.get("https://api.mindat.org/v1/geomaterials/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 1,
+                        "name": "Quartz",
+                        "mindat_formula": "SiO2",
+                        "csystem": "Hexagonal",
+                        "hmin": 7,
+                        "hmax": 7,
+                        "ima_status": ["APPROVED"],
+                    }
+                ]
             },
-            "11": {
-                "id": 11,
-                "txt": "Far away locality",
-                "latitude": 36.7,
-                "longitude": 3.0,
-                "country": "Algeria",
+        )
+    )
+    router.get(MINDAT_LOCS).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 10,
+                        "txt": "Sample locality",
+                        "latitude": 34.5,
+                        "longitude": -78.4,
+                        "country": "USA",
+                    },
+                    {
+                        "id": 11,
+                        "txt": "Far away locality",
+                        "latitude": 36.7,
+                        "longitude": 3.0,
+                        "country": "Algeria",
+                    },
+                ]
             },
-        }
-        return httpx.Response(200, json=rows.get(lid, {"id": int(lid) if lid.isdigit() else 0}))
-
-    router.get(url__regex=r"https://api\.mindat\.org/v1/localities/\d+/").mock(
-        side_effect=_mindat_locality
+        )
     )
     router.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(200, json={"results": []})
