@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import time
 from functools import partial
 from typing import Any
@@ -317,27 +316,6 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
     return body.model_dump(mode="json")
 
 
-def _inject_neotoma_waiting(payload: dict[str, Any]) -> dict[str, Any]:
-    """Attach a waiting Neotoma diagnostic so the UI can fetch it after first paint."""
-    out = copy.deepcopy(payload)
-    diags = [d for d in (out.get("diagnostics") or []) if d.get("provider") != "NEOTOMA"]
-    diags.append(
-        {
-            "provider": "NEOTOMA",
-            "status": "waiting",
-            "error": "Neotoma still loading — results will update when ready",
-            "record_count": 0,
-            "elapsed_ms": None,
-        }
-    )
-    out["diagnostics"] = diags
-    occ = dict(out.get("occurrences") or {})
-    totals = [s for s in (occ.get("source_totals") or []) if s.get("provider") != "NEOTOMA"]
-    occ["source_totals"] = totals
-    out["occurrences"] = occ
-    return out
-
-
 @router.get("/synthesize")
 async def synthesize(
     request: Request,
@@ -384,7 +362,7 @@ async def synthesize(
         occ = dict(out.get("occurrences") or {})
         occ["view_all_url"] = str(request.url)
         out["occurrences"] = occ
-        return _inject_neotoma_waiting(out)
+        return out
 
     params = QueryParams(
         lat=lat,
@@ -399,10 +377,12 @@ async def synthesize(
     t0 = time.perf_counter()
 
     # Phase 1: occurrence providers first so we can harvest coordinates.
-    # Neotoma is deferred (placeholder below) so slow Neotoma does not block the page.
+    # Neotoma runs in parallel here (fixed v2 parser). The UI may still refresh
+    # via /occurrences when the diagnostic is "waiting" on older API builds.
     occurrence_names = [
         ("PBDB", adapters.pbdb.fetch_and_parse),
         ("GBIF", adapters.gbif.fetch_and_parse),
+        ("NEOTOMA", adapters.neotoma.fetch_and_parse),
     ]
     # Independent of coords — run alongside phase 1 for latency.
     parallel_names = [
@@ -461,4 +441,4 @@ async def synthesize(
     )
     cache.set(key, payload)
     response.headers["X-Cache"] = "MISS"
-    return _inject_neotoma_waiting(payload)
+    return payload

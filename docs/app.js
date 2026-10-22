@@ -36,7 +36,7 @@
   function loadIcsIntervals() {
     if (icsIntervals) return Promise.resolve(icsIntervals);
     if (!icsLoadPromise) {
-      icsLoadPromise = fetch("./ics-intervals.json?v=geo-ranks-v1")
+      icsLoadPromise = fetch("./ics-intervals.json?v=neotoma-inline-v1")
         .then((r) => (r.ok ? r.json() : { intervals: [] }))
         .then((j) => {
           icsIntervals = Array.isArray(j.intervals) ? j.intervals : [];
@@ -1005,7 +1005,7 @@
 
   function renderResults(data, limit = DEFAULT_LIMIT, opts = {}) {
     const units = data.geology?.macrostrat_units || [];
-    const features = data.occurrences?.features || [];
+    let features = data.occurrences?.features || [];
     const specimens = data.specimens?.records || [];
     const media = data.media_3d?.records || [];
     const minerals = data.minerals?.minerals || [];
@@ -1017,6 +1017,30 @@
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
     const sourceTotals = data.occurrences?.source_totals || [];
     const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
+    // Drop hollow Neotoma rows (old API parsed the wrong fields → blank table lines).
+    const usableFeatures = features.filter((f) => {
+      const src = (f.properties || {}).database_source || "";
+      if (src.toUpperCase() !== "NEOTOMA") return true;
+      const coords = f.geometry?.coordinates;
+      const hasCoords = Array.isArray(coords) && coords.length >= 2;
+      const p = f.properties || {};
+      return hasCoords && Boolean(p.taxon_name || p.accepted_name || p.occurrence_id);
+    });
+    if (usableFeatures.length !== features.length) {
+      features = usableFeatures;
+      if (data.occurrences) data.occurrences.features = usableFeatures;
+      const neoKept = usableFeatures.filter(
+        (f) => (f.properties || {}).database_source === "NEOTOMA"
+      ).length;
+      const diags = data.diagnostics || [];
+      const ni = diags.findIndex((d) => d.provider === "NEOTOMA");
+      if (ni >= 0) {
+        diags[ni] = { ...diags[ni], record_count: neoKept };
+        if (neoKept === 0 && diags[ni].status === "ok") {
+          diags[ni].error = "No mappable Neotoma occurrences";
+        }
+      }
+    }
     const gbif = resolveGbifState(features, sourceTotals, show);
 
     const nameHtml = parses.length
