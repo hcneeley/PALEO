@@ -80,6 +80,8 @@
 
 html {
   color-scheme: light;
+  width: 100%;
+  overflow-x: clip;
 }
 
 html[data-theme="dark"] {
@@ -88,7 +90,10 @@ html[data-theme="dark"] {
 
 body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: clip;
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.5;
@@ -115,6 +120,7 @@ body {
 
 .shell {
   width: min(920px, calc(100% - 2rem));
+  max-width: 100%;
   margin: 0 auto;
   padding: 3.5rem 0 7.5rem;
 }
@@ -122,7 +128,7 @@ body {
 .section-nav {
   position: fixed;
   top: 50%;
-  left: max(0.75rem, calc((100vw - 920px) / 2 - 11.5rem));
+  left: max(0.75rem, calc((100% - 920px) / 2 - 11.5rem));
   transform: translateY(-50%);
   z-index: 20;
   width: 10.5rem;
@@ -562,7 +568,7 @@ th {
   gap: 0.35rem;
   width: 100%;
   margin: 0;
-  padding: 0.7rem max(1rem, calc((100vw - 920px) / 2)) 0.85rem;
+  padding: 0.7rem max(1rem, calc((100% - 920px) / 2)) 0.85rem;
   border-top: 1px solid var(--line);
   background: var(--foot-bg);
   backdrop-filter: blur(12px);
@@ -620,18 +626,22 @@ th {
   .section-nav {
     position: sticky;
     top: 0;
-    left: auto;
+    left: 0;
+    right: 0;
     transform: none;
-    width: auto;
-    margin: 0 auto;
-    max-width: min(920px, calc(100% - 2rem));
-    z-index: 30;
-    border-radius: 0 0 var(--radius) var(--radius);
-    padding: 0.55rem 0.65rem 0.65rem;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    z-index: 50;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.55rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   }
 
   .section-nav-label {
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.3rem;
   }
 
   .section-nav ul {
@@ -639,9 +649,11 @@ th {
     flex-wrap: nowrap;
     gap: 0.25rem;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     padding-bottom: 0.15rem;
+    max-width: 100%;
   }
 
   .section-nav a {
@@ -652,11 +664,24 @@ th {
 
 @media (max-width: 720px) {
   .shell {
-    padding-top: 2.25rem;
+    width: calc(100% - 1.25rem);
+    max-width: 100%;
+    padding-top: 1.75rem;
+    padding-bottom: 8.5rem;
   }
 
   .brand {
     max-width: none;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .lede,
+  .block,
+  .status,
+  .results,
+  .search {
+    max-width: 100%;
   }
 
   .field-row,
@@ -668,6 +693,27 @@ th {
   .actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .table-wrap,
+  .ages-chart-host,
+  .pager-bar,
+  .pie-row {
+    max-width: 100%;
+  }
+
+  .ages-svg {
+    max-width: 100%;
+  }
+
+  .pager-links {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .foot {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 }
 
