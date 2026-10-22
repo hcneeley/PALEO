@@ -88,7 +88,7 @@
     return hits[0].name;
   }
 
-  /** Resolve eonothem→stage; ranges become "Oligocene–Pliocene" when bounds differ. */
+  /** Resolve Eon→Age; ranges become "Oligocene–Pliocene" when bounds differ. */
   function resolveChronostratRange(older, younger, intervals) {
     const hi = older != null ? older : younger;
     const lo = younger != null ? younger : older;
