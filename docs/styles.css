@@ -726,3 +726,86 @@ button.linkish:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.chrono-plain {
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.chrono-ma {
+  margin: 0 0 0.55rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--amber);
+}
+
+.chrono-tree .tax-name {
+  font-style: normal;
+}
+
+.ages-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.ages-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.ages-leg::before {
+  content: "";
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-right: 0.35rem;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.ages-leg.query::before {
+  background: #e0a45a;
+}
+
+.ages-leg.pbdb::before {
+  background: #6fbfa6;
+}
+
+.ages-leg.macro::before {
+  background: #9aafa3;
+}
+
+.ages-chart-host {
+  overflow-x: auto;
+  margin: 0 0 0.25rem;
+}
+
+.ages-svg {
+  display: block;
+  width: min(100%, 560px);
+  height: auto;
+  background: rgba(12, 18, 16, 0.35);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.ages-tick,
+.ages-track-label,
+.ages-caption {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: var(--font-ui);
+}
+
+.ages-track-label {
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

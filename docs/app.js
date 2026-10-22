@@ -22,8 +22,350 @@
     history.replaceState(null, "", window.location.pathname + window.location.search);
   });
 
+  loadIcsIntervals();
+
   /** @type {{ cancel: boolean, busy: boolean, ctx: object | null }} */
   const paging = { cancel: false, busy: false, ctx: null };
+
+  /** @type {Array<{name:string,rank:string,t_age:number,b_age:number,color:string}>|null} */
+  let icsIntervals = null;
+  let icsLoadPromise = null;
+  const CHRONO_RANKS = ["Eonothem", "Erathem", "System", "Series", "Stage"];
+  const PHANEROZOIC_OLDER = 541;
+  /** @type {{ full: boolean, payload: object | null }} */
+  const agesChartState = { full: false, payload: null };
+
+  function loadIcsIntervals() {
+    if (icsIntervals) return Promise.resolve(icsIntervals);
+    if (!icsLoadPromise) {
+      icsLoadPromise = fetch("./ics-intervals.json")
+        .then((r) => (r.ok ? r.json() : { intervals: [] }))
+        .then((j) => {
+          icsIntervals = Array.isArray(j.intervals) ? j.intervals : [];
+          return icsIntervals;
+        })
+        .catch(() => {
+          icsIntervals = [];
+          return icsIntervals;
+        });
+    }
+    return icsLoadPromise;
+  }
+
+  function numOrNull(v) {
+    if (v === "" || v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function queryAgeBounds(data, query) {
+    const gts = data?.query?.gts_normalized_age || {};
+    let younger = numOrNull(gts.age_min_ma);
+    let older = numOrNull(gts.age_max_ma);
+    if (younger == null) younger = numOrNull(query?.ageMin);
+    if (older == null) older = numOrNull(query?.ageMax);
+    if (younger != null && older != null && younger > older) {
+      const tmp = younger;
+      younger = older;
+      older = tmp;
+    }
+    return { younger, older };
+  }
+
+  function intervalContains(iv, age) {
+    const lo = Math.min(iv.t_age, iv.b_age);
+    const hi = Math.max(iv.t_age, iv.b_age);
+    return age >= lo && age <= hi;
+  }
+
+  function resolveChronostrat(ageMa, intervals) {
+    if (ageMa == null || !Number.isFinite(ageMa) || !intervals?.length) return null;
+    const out = {};
+    for (const rank of CHRONO_RANKS) {
+      const hits = intervals.filter((i) => i.rank === rank && intervalContains(i, ageMa));
+      if (!hits.length) continue;
+      hits.sort(
+        (a, b) => Math.abs(a.b_age - a.t_age) - Math.abs(b.b_age - b.t_age) || a.name.localeCompare(b.name)
+      );
+      out[rank] = hits[0].name;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  function formatMaPair(older, younger) {
+    if (older == null && younger == null) return "";
+    if (older != null && younger != null) {
+      if (older === younger) return `${older} Ma`;
+      return `${older}–${younger} Ma`;
+    }
+    if (older != null) return `${older} Ma`;
+    return `${younger} Ma`;
+  }
+
+  function chronostratTaxonomyHtml(data, query, intervals) {
+    const { younger, older } = queryAgeBounds(data, query);
+    if (younger == null && older == null) return "";
+    const mid =
+      younger != null && older != null
+        ? (younger + older) / 2
+        : younger != null
+          ? younger
+          : older;
+    const chrono = resolveChronostrat(mid, intervals);
+    const maLine = formatMaPair(older, younger);
+    const ranksHtml = chrono
+      ? `<ol class="taxonomy-tree chrono-tree">${CHRONO_RANKS.filter((r) => chrono[r])
+          .map(
+            (r) =>
+              `<li><span class="tax-rank">${esc(r)}</span> <span class="tax-name">${esc(
+                chrono[r]
+              )}</span></li>`
+          )
+          .join("")}</ol>`
+      : "";
+    return `<div class="chrono-plain">
+      <p class="sub">Chronostratigraphy</p>
+      <p class="chrono-ma">${esc(maLine)}</p>
+      ${ranksHtml}
+    </div>`;
+  }
+
+  function collectAgeLayers(data, query) {
+    const bounds = queryAgeBounds(data, query);
+    const pbdb = [];
+    for (const f of data.occurrences?.features || []) {
+      const p = f.properties || {};
+      if ((p.database_source || "").toUpperCase() !== "PBDB") continue;
+      let older = numOrNull(p.max_ma);
+      let younger = numOrNull(p.min_ma);
+      if (older == null && younger == null) continue;
+      if (older == null) older = younger;
+      if (younger == null) younger = older;
+      if (younger > older) {
+        const t = younger;
+        younger = older;
+        older = t;
+      }
+      pbdb.push({
+        older,
+        younger,
+        label: p.taxon_name || p.accepted_name || "PBDB",
+      });
+    }
+    const macro = [];
+    for (const u of data.geology?.macrostrat_units || []) {
+      let older = numOrNull(u.age_bottom_ma);
+      let younger = numOrNull(u.age_top_ma);
+      if (older == null && younger == null) continue;
+      if (older == null) older = younger;
+      if (younger == null) younger = older;
+      if (younger > older) {
+        const t = younger;
+        younger = older;
+        older = t;
+      }
+      macro.push({
+        older,
+        younger,
+        label: u.unit_name || "Unit",
+      });
+    }
+    return { bounds, pbdb, macro };
+  }
+
+  function agesDomain(layers, full) {
+    if (full) return { older: PHANEROZOIC_OLDER, younger: 0 };
+    const ages = [];
+    if (layers.bounds.older != null) ages.push(layers.bounds.older);
+    if (layers.bounds.younger != null) ages.push(layers.bounds.younger);
+    for (const r of layers.pbdb) {
+      ages.push(r.older, r.younger);
+    }
+    for (const r of layers.macro) {
+      ages.push(r.older, r.younger);
+    }
+    if (!ages.length) return { older: PHANEROZOIC_OLDER, younger: 0 };
+    let older = Math.max(...ages);
+    let younger = Math.min(...ages);
+    const pad = Math.max((older - younger) * 0.08, 0.5);
+    older = Math.min(PHANEROZOIC_OLDER, older + pad);
+    younger = Math.max(0, younger - pad);
+    if (older - younger < 1) {
+      older = Math.min(PHANEROZOIC_OLDER, older + 0.5);
+      younger = Math.max(0, younger - 0.5);
+    }
+    return { older, younger };
+  }
+
+  function buildAgesChartSvg(layers, intervals, full) {
+    const { older, younger } = agesDomain(layers, full);
+    const span = older - younger || 1;
+    const W = 560;
+    const H = 420;
+    const padT = 16;
+    const padB = 28;
+    const padL = 8;
+    const colX = 48;
+    const colW = 56;
+    const trackGap = 10;
+    const trackW = 52;
+    const axisX = colX + colW + 8;
+    const plotTop = padT;
+    const plotH = H - padT - padB;
+
+    const yOf = (age) => plotTop + ((age - younger) / span) * plotH;
+
+    const systems = (intervals || []).filter(
+      (i) => i.rank === "System" && i.b_age > younger && i.t_age < older
+    );
+    const bands = systems
+      .map((i) => {
+        const top = Math.max(younger, Math.min(i.t_age, i.b_age));
+        const bot = Math.min(older, Math.max(i.t_age, i.b_age));
+        if (bot <= top) return "";
+        const y1 = yOf(top);
+        const y2 = yOf(bot);
+        return `<rect x="${colX}" y="${y1}" width="${colW}" height="${Math.max(
+          1,
+          y2 - y1
+        )}" fill="${esc(i.color)}" stroke="rgba(12,18,16,0.35)" stroke-width="0.5">
+          <title>${esc(i.name)} ${esc(i.b_age)}–${esc(i.t_age)} Ma</title>
+        </rect>`;
+      })
+      .join("");
+
+    const ticks = [];
+    const niceSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+    let step = 10;
+    for (const s of niceSteps) {
+      if (span / s <= 8) {
+        step = s;
+        break;
+      }
+    }
+    const startTick = Math.ceil(younger / step) * step;
+    for (let a = startTick; a <= older + 1e-9; a += step) {
+      const y = yOf(a);
+      ticks.push(
+        `<line x1="${axisX}" y1="${y}" x2="${axisX + 6}" y2="${y}" stroke="rgba(232,239,230,0.35)"/>
+         <text x="${axisX + 10}" y="${y + 3}" class="ages-tick">${esc(
+          Number(a.toFixed(4))
+        )}</text>`
+      );
+    }
+
+    let trackX = axisX + 48;
+    const tracks = [];
+
+    // Query bounds band
+    if (layers.bounds.older != null || layers.bounds.younger != null) {
+      const qOld = layers.bounds.older ?? layers.bounds.younger;
+      const qYoung = layers.bounds.younger ?? layers.bounds.older;
+      const y1 = yOf(qYoung);
+      const y2 = yOf(qOld);
+      tracks.push(`<g class="ages-track">
+        <text x="${trackX + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">Query</text>
+        <rect x="${trackX}" y="${y1}" width="${trackW}" height="${Math.max(2, y2 - y1)}"
+          fill="rgba(224,164,90,0.35)" stroke="#e0a45a" stroke-width="1.2">
+          <title>Query ${esc(formatMaPair(qOld, qYoung))}</title>
+        </rect>
+      </g>`);
+      trackX += trackW + trackGap;
+    }
+
+    // PBDB ranges
+    if (layers.pbdb.length) {
+      const x0 = trackX;
+      const n = layers.pbdb.length;
+      tracks.push(`<text x="${x0 + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">PBDB</text>`);
+      layers.pbdb.forEach((r, i) => {
+        const inset = n > 1 ? (i / Math.max(n - 1, 1)) * (trackW - 10) : trackW / 2 - 2;
+        const x = x0 + 4 + inset;
+        const y1 = yOf(r.younger);
+        const y2 = yOf(r.older);
+        tracks.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#6fbfa6" stroke-width="2.5" stroke-linecap="round">
+          <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
+        </line>
+        <circle cx="${x}" cy="${(y1 + y2) / 2}" r="2.2" fill="#6fbfa6"/>`);
+      });
+      trackX += trackW + trackGap;
+    }
+
+    // Macrostrat ranges
+    if (layers.macro.length) {
+      const x0 = trackX;
+      const n = layers.macro.length;
+      tracks.push(`<text x="${x0 + trackW / 2}" y="${padT - 4}" text-anchor="middle" class="ages-track-label">Macrostrat</text>`);
+      layers.macro.forEach((r, i) => {
+        const inset = n > 1 ? (i / Math.max(n - 1, 1)) * (trackW - 10) : trackW / 2 - 2;
+        const x = x0 + 4 + inset;
+        const y1 = yOf(r.younger);
+        const y2 = yOf(r.older);
+        tracks.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#9aafa3" stroke-width="2.5" stroke-linecap="round">
+          <title>${esc(r.label)} ${esc(formatMaPair(r.older, r.younger))}</title>
+        </line>
+        <circle cx="${x}" cy="${(y1 + y2) / 2}" r="2.2" fill="#9aafa3"/>`);
+      });
+      trackX += trackW + trackGap;
+    }
+
+    const usedW = Math.max(W, trackX + padL);
+    return `<svg class="ages-svg" viewBox="0 0 ${usedW} ${H}" role="img" aria-label="ICS chronostratigraphy with ages">
+      <text x="${colX + colW / 2}" y="${H - 8}" text-anchor="middle" class="ages-caption">ICS systems</text>
+      <text x="${axisX + 10}" y="${H - 8}" class="ages-caption">Ma (older ↓)</text>
+      ${bands}
+      <rect x="${colX}" y="${plotTop}" width="${colW}" height="${plotH}" fill="none" stroke="rgba(232,239,230,0.25)"/>
+      <line x1="${axisX}" y1="${plotTop}" x2="${axisX}" y2="${plotTop + plotH}" stroke="rgba(232,239,230,0.35)"/>
+      ${ticks.join("")}
+      ${tracks.join("")}
+    </svg>`;
+  }
+
+  function agesSectionHtml(data, query, intervals) {
+    const layers = collectAgeLayers(data, query);
+    const hasQuery = layers.bounds.older != null || layers.bounds.younger != null;
+    const hasAny = hasQuery || layers.pbdb.length > 0 || layers.macro.length > 0;
+    if (!hasAny) {
+      return `<p class="empty">No numeric ages to plot (needs query bounds, PBDB Ma, or Macrostrat units).</p>`;
+    }
+    agesChartState.payload = { layers, intervals };
+    const svg = buildAgesChartSvg(layers, intervals, agesChartState.full);
+    const legend = [
+      hasQuery ? `<span class="ages-leg query">Query bounds</span>` : "",
+      layers.pbdb.length
+        ? `<span class="ages-leg pbdb">PBDB · ${layers.pbdb.length}</span>`
+        : "",
+      layers.macro.length
+        ? `<span class="ages-leg macro">Macrostrat · ${layers.macro.length}</span>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    return `<div class="ages-toolbar">
+        <button type="button" class="linkish" id="ages-full-toggle">${
+          agesChartState.full ? "Zoom to data" : "Full Phanerozoic"
+        }</button>
+        <div class="ages-legend">${legend}</div>
+      </div>
+      <div id="ages-chart-host" class="ages-chart-host">${svg}</div>`;
+  }
+
+  function wireAgesChartToggle() {
+    const btn = document.getElementById("ages-full-toggle");
+    if (!btn || !agesChartState.payload) return;
+    btn.addEventListener("click", () => {
+      agesChartState.full = !agesChartState.full;
+      const host = document.getElementById("ages-chart-host");
+      if (host) {
+        host.innerHTML = buildAgesChartSvg(
+          agesChartState.payload.layers,
+          agesChartState.payload.intervals,
+          agesChartState.full
+        );
+      }
+      btn.textContent = agesChartState.full ? "Zoom to data" : "Full Phanerozoic";
+    });
+  }
 
   function resolveApiBase() {
     const params = new URLSearchParams(window.location.search);
@@ -151,6 +493,7 @@
         throw new Error(body.detail || "Synthesize failed");
       }
       renderStatus(body);
+      await loadIcsIntervals();
       renderResults(body, limit, { apiBase, query, loadAll });
     } catch (err) {
       hint.textContent = String(err.message || err);
@@ -494,6 +837,7 @@
           .join("")}</ul>`
       : `<p class="empty">No name parse.</p>`;
 
+    const chronoTaxHtml = chronostratTaxonomyHtml(data, opts.query, icsIntervals || []);
     const taxHtml = hierarchy.length
       ? `<ol class="taxonomy-tree">${hierarchy
           .map(
@@ -520,8 +864,9 @@
                 )
                 .join("")}</ol>`
             : ""
-        }`
-      : `<p class="empty">No taxonomy hierarchy.</p>`;
+        }
+        ${chronoTaxHtml}`
+      : `${chronoTaxHtml || `<p class="empty">No taxonomy hierarchy.</p>`}`;
 
     const lithSlices = countField(units, "lithology");
     const envSlices = countField(units, "environment");
@@ -679,6 +1024,14 @@
         : ""
     }${totalsLine ? ` · ${totalsLine}` : ""}`;
 
+    const ageLayers = collectAgeLayers(data, opts.query);
+    const agesCount =
+      (ageLayers.bounds.older != null || ageLayers.bounds.younger != null ? 1 : 0) +
+      ageLayers.pbdb.length +
+      ageLayers.macro.length;
+    agesChartState.full = false;
+    const agesHtml = agesSectionHtml(data, opts.query, icsIntervals || []);
+
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
       block(
@@ -690,6 +1043,13 @@
       ),
       block("Name parse", `${parses.length} GNparser result(s)`, nameHtml),
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
+      block(
+        "Ages",
+        agesCount
+          ? `ICS column · query, PBDB, Macrostrat`
+          : "No ages in this result",
+        agesHtml
+      ),
       block("Occurrences", occSub, occHtml),
       block("Specimens", `${data.specimens?.voucher_count ?? 0} voucher(s)`, specimenHtml),
       block("3D media", data.media_3d?.has_3d_assets ? "MorphoSource hits" : "None", mediaHtml),
@@ -704,6 +1064,7 @@
       block("Literature", `${literature.length} work(s)`, litHtml),
     ].join("");
     renderSectionNav();
+    wireAgesChartToggle();
 
     if (!opts.apiBase) return;
 
