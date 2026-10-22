@@ -934,6 +934,21 @@
     return Number(data.occurrences?.total_records) || 0;
   }
 
+  function diagnosticRecordCount(data, provider) {
+    const row = (data.diagnostics || []).find((d) => d.provider === provider);
+    if (!row || row.status !== "ok") return 0;
+    const n = Number(row.record_count);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function literatureAvailableCount(data) {
+    // Prefer upstream catalog totals on Crossref / OpenAlex diagnostics.
+    const fromDiags =
+      diagnosticRecordCount(data, "CROSSREF") + diagnosticRecordCount(data, "OPENALEX");
+    if (fromDiags > 0) return fromDiags;
+    return (data.literature || []).length;
+  }
+
   function renderStatus(data) {
     const pills = (data.diagnostics || [])
       .map((d) => {
@@ -946,21 +961,21 @@
                 ? "waiting"
                 : "skipped";
         const title = d.error ? ` title="${esc(d.error)}"` : "";
+        const n = Number(d.record_count);
         const count =
-          d.status === "ok" && Number(d.record_count) > 0 ? ` · ${esc(d.record_count)}` : "";
+          d.status === "ok" && Number.isFinite(n) && n > 0
+            ? ` · ${esc(n.toLocaleString())}`
+            : "";
         const label = d.status === "waiting" ? "waiting…" : d.status;
         return `<span class="pill ${cls}"${title}>${esc(d.provider)} · ${esc(label)}${count}</span>`;
       })
       .join("");
 
-    const loaded = (data.occurrences?.features || []).length;
+    // Catalog / upstream totals — not the display-capped page currently in view.
     const available = occurrenceAvailableCount(data);
-    const occLabel =
-      loaded > 0 && available > loaded
-        ? `Occurrences <strong>${esc(loaded.toLocaleString())}</strong> of <strong>${esc(
-            available.toLocaleString()
-          )}</strong>`
-        : `Occurrences <strong>${esc(available.toLocaleString())}</strong>`;
+    const litAvailable = literatureAvailableCount(data);
+    const occLabel = `Occurrences <strong>${esc(available.toLocaleString())}</strong>`;
+    const litLabel = `Literature <strong>${esc(litAvailable.toLocaleString())}</strong>`;
 
     statusEl.hidden = false;
     statusEl.innerHTML = `
@@ -968,7 +983,7 @@
         <span><strong>${esc(Math.round(data.execution_time_ms))} ms</strong> wall time</span>
         <span>Cache <strong>${esc(data.cache_status)}</strong></span>
         <span>${occLabel}</span>
-        <span>Literature <strong>${esc((data.literature || []).length)}</strong></span>
+        <span>${litLabel}</span>
       </div>
       <div class="pills">${pills}</div>
     `;

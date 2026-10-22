@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=theme-v1" />
+    <link rel="stylesheet" href="./styles.css?v=theme-footer-v1" />
     <script>
       (function () {
         try {
@@ -29,16 +29,6 @@
     </script>
   </head>
   <body>
-    <button
-      type="button"
-      id="theme-toggle"
-      class="theme-toggle"
-      aria-label="Switch to dark mode"
-      title="Toggle color theme"
-    >
-      <span class="theme-toggle-icon" aria-hidden="true"></span>
-      <span id="theme-toggle-label">Dark</span>
-    </button>
     <div class="atmosphere" aria-hidden="true"></div>
     <nav id="section-nav" class="section-nav" hidden aria-label="Jump to section">
       <p class="section-nav-label">Sections</p>
@@ -163,13 +153,25 @@
           <a href="https://upae-ff1k.onrender.com/api/v1/">API</a>
           <a href="https://github.com/hcneeley/upae">GitHub</a>
         </div>
-        <button type="button" id="top-btn" class="top-btn ghost">Top of page</button>
+        <div class="foot-actions">
+          <button
+            type="button"
+            id="theme-toggle"
+            class="theme-toggle"
+            aria-label="Switch to dark mode"
+            title="Toggle color theme"
+          >
+            <span class="theme-toggle-icon" aria-hidden="true"></span>
+            <span id="theme-toggle-label">Dark</span>
+          </button>
+          <button type="button" id="top-btn" class="top-btn ghost">Top of page</button>
+        </div>
       </div>
       <p class="foot-note">
         GBIF progressive load is capped at 100,000 occurrences via their search API.
         Larger catalogs need Browse all on GBIF (download / portal).
       </p>
     </footer>
-    <script src="./app.js?v=eon-width-v1"></script>
+    <script src="./app.js?v=status-totals-v1"></script>
   </body>
 </html>

@@ -167,7 +167,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
-                "itemCount": 1,
+                "itemCount": 500,
                 "items": [
                     {
                         "uuid": "abc-123",
@@ -213,8 +213,8 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
-                "count": 1,
-                "endOfRecords": True,
+                "count": 2262,
+                "endOfRecords": False,
                 "results": [
                     {
                         "key": 111,
@@ -265,7 +265,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
             json={
                 "status": "ok",
                 "message": {
-                    "total-results": 1,
+                    "total-results": 80,
                     "items": [
                         {
                             "DOI": "10.1234/example",
@@ -285,7 +285,7 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
-                "meta": {"count": 1},
+                "meta": {"count": 120},
                 "results": [
                     {
                         "id": "https://openalex.org/W1",
@@ -392,17 +392,22 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert any(l["provider"] == "PBDB" for l in body["occurrences"]["browse_links"])
     gbif_total = next(s for s in body["occurrences"]["source_totals"] if s["provider"] == "GBIF")
     assert gbif_total["returned"] >= 1
-    assert gbif_total["total"] == 1
+    assert gbif_total["total"] == 2262
     # total_records is upstream-available (GBIF catalog + other returned), not page size
     assert body["occurrences"]["total_records"] == sum(
         (s["total"] if s["total"] is not None else s["returned"])
         for s in body["occurrences"]["source_totals"]
     )
-    assert body["specimens"]["voucher_count"] == 1
+    assert body["specimens"]["voucher_count"] == 500
     assert body["specimens"]["returned"] == 1
-    assert body["specimens"]["total"] == 1
-    assert body["specimens"]["has_more"] is False
+    assert body["specimens"]["total"] == 500
+    assert body["specimens"]["has_more"] is True
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
+    diag_counts = {d["provider"]: d["record_count"] for d in body["diagnostics"]}
+    assert diag_counts["GBIF"] == 2262
+    assert diag_counts["IDIGBIO"] == 500
+    assert diag_counts["CROSSREF"] == 80
+    assert diag_counts["OPENALEX"] == 120
     assert providers["PBDB"] == "ok"
     assert providers["TAXONOMY"] == "ok"
     assert body["taxonomy"]["accepted_name"] == "Hadrosaurus foulkii"

@@ -83,9 +83,10 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
             total = None
 
     fetched = len(raw)
-    end = fetched < page
-    if isinstance(total, int) and offset + fetched >= total:
-        end = True
+    if isinstance(total, int):
+        end = offset + fetched >= total or fetched == 0
+    else:
+        end = fetched < page
 
     return AdapterResult(
         provider="IDIGBIO",

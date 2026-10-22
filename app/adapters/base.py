@@ -40,30 +40,39 @@ class AdapterResult:
     data: dict[str, Any] = field(default_factory=dict)
 
     def diagnostic(self) -> AdapterDiagnostic:
-        # Only count real returned rows — never the request limit / placeholders.
+        # Prefer upstream catalog totals over the capped page currently in hand.
         if self.status in ("waiting", "skipped", "error"):
             count = 0
-        elif "features" in self.data:
-            count = len(self.data.get("features") or [])
-        elif "units" in self.data:
-            count = len(self.data.get("units") or [])
-        elif "literature" in self.data:
-            count = len(self.data.get("literature") or [])
-        elif "hierarchy" in self.data:
-            count = len(self.data.get("hierarchy") or [])
-        elif "parses" in self.data:
-            count = len(self.data.get("parses") or [])
-        elif "minerals" in self.data:
-            count = len(self.data.get("minerals") or []) + len(
-                self.data.get("localities") or []
-            )
-        elif "records" in self.data and "hierarchy" not in self.data:
-            # Specimen / media style payloads (avoid taxonomy's alias "records").
-            count = len(self.data.get("records") or [])
-        elif isinstance(self.data.get("proxy"), dict):
-            count = int((self.data["proxy"] or {}).get("study_count") or 0)
         else:
-            count = 0
+            total = self.data.get("total_count")
+            if total is None:
+                total = self.data.get("total_results")
+            if total is not None:
+                try:
+                    count = int(total)
+                except (TypeError, ValueError):
+                    count = 0
+            elif "features" in self.data:
+                count = len(self.data.get("features") or [])
+            elif "units" in self.data:
+                count = len(self.data.get("units") or [])
+            elif "literature" in self.data:
+                count = len(self.data.get("literature") or [])
+            elif "hierarchy" in self.data:
+                count = len(self.data.get("hierarchy") or [])
+            elif "parses" in self.data:
+                count = len(self.data.get("parses") or [])
+            elif "minerals" in self.data:
+                count = len(self.data.get("minerals") or []) + len(
+                    self.data.get("localities") or []
+                )
+            elif "records" in self.data and "hierarchy" not in self.data:
+                # Specimen / media style payloads (avoid taxonomy's alias "records").
+                count = len(self.data.get("records") or [])
+            elif isinstance(self.data.get("proxy"), dict):
+                count = int((self.data["proxy"] or {}).get("study_count") or 0)
+            else:
+                count = 0
         return AdapterDiagnostic(
             provider=self.provider,
             status=self.status,
