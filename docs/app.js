@@ -330,6 +330,85 @@
     </tr>`;
   }
 
+  const PIE_COLORS = [
+    "#6fbfa6",
+    "#e0a45a",
+    "#7ec98a",
+    "#d4b35a",
+    "#5a9e8a",
+    "#c4894a",
+    "#8ebf9a",
+    "#e8c07a",
+    "#4a7d6e",
+    "#b8734a",
+    "#9aafa3",
+    "#c4a882",
+  ];
+
+  function countField(rows, key) {
+    const counts = {};
+    for (const row of rows || []) {
+      const label = String(row?.[key] ?? "").trim() || "Unknown";
+      counts[label] = (counts[label] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }
+
+  function pieFigure(slices, title) {
+    const total = slices.reduce((sum, s) => sum + s.count, 0);
+    if (!total) return "";
+    const R = 40;
+    const CX = 50;
+    const CY = 50;
+    let angle = -Math.PI / 2;
+    const paths = [];
+    slices.forEach((slice, i) => {
+      const frac = slice.count / total;
+      if (frac <= 0) return;
+      const color = PIE_COLORS[i % PIE_COLORS.length];
+      const tip = `${slice.name}: ${slice.count} (${Math.round(frac * 100)}%)`;
+      if (frac >= 0.999) {
+        paths.push(
+          `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${color}"><title>${esc(tip)}</title></circle>`
+        );
+        return;
+      }
+      const next = angle + frac * 2 * Math.PI;
+      const x1 = CX + R * Math.cos(angle);
+      const y1 = CY + R * Math.sin(angle);
+      const x2 = CX + R * Math.cos(next);
+      const y2 = CY + R * Math.sin(next);
+      const large = frac > 0.5 ? 1 : 0;
+      paths.push(
+        `<path d="M ${CX} ${CY} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x2.toFixed(
+          2
+        )} ${y2.toFixed(2)} Z" fill="${color}"><title>${esc(tip)}</title></path>`
+      );
+      angle = next;
+    });
+    const legend = slices
+      .map((s, i) => {
+        const pct = Math.round((s.count / total) * 100);
+        return `<li>
+          <span class="pie-swatch" style="background:${PIE_COLORS[i % PIE_COLORS.length]}"></span>
+          <span class="pie-label">${esc(s.name)}</span>
+          <span class="pie-count">${esc(s.count)} · ${esc(pct)}%</span>
+        </li>`;
+      })
+      .join("");
+    return `<figure class="pie-chart">
+      <figcaption>${esc(title)}</figcaption>
+      <div class="pie-body">
+        <svg viewBox="0 0 100 100" role="img" aria-label="${esc(title)} composition">${paths.join(
+          ""
+        )}</svg>
+        <ul class="pie-legend">${legend}</ul>
+      </div>
+    </figure>`;
+  }
+
   function formatTotals(sourceTotals, features) {
     if (sourceTotals?.length) {
       return sourceTotals
@@ -444,8 +523,17 @@
         }`
       : `<p class="empty">No taxonomy hierarchy.</p>`;
 
+    const lithSlices = countField(units, "lithology");
+    const envSlices = countField(units, "environment");
+    const geologyCharts =
+      units.length && (lithSlices.length || envSlices.length)
+        ? `<div class="pie-row">
+            ${pieFigure(lithSlices, "Lithology")}
+            ${pieFigure(envSlices, "Environment")}
+          </div>`
+        : "";
     const geologyHtml = units.length
-      ? `<ul class="list">${units
+      ? `${geologyCharts}<ul class="list">${units
           .map(
             (u) => `<li>
               <div class="item-title">${esc(u.unit_name || "Unit")}</div>
