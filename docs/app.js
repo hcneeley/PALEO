@@ -1045,21 +1045,49 @@
       void refresh();
     }
 
-    function setSize(n) {
+    async function setSize(n) {
       const next = Math.max(1, Math.min(Number(n) || DEFAULT_LIMIT, MAX_LIMIT));
-      const firstIdx = state.page * state.size;
+      if (next === state.size) {
+        await refresh();
+        return;
+      }
       state.size = next;
-      state.page = Math.floor(firstIdx / state.size);
-      void refresh();
+      // Always restart at the first page when the page size changes.
+      state.page = 0;
+      await refresh();
+      // Growing the page may need more rows than the current buffer holds.
+      while (
+        state.items.length < state.size &&
+        state.getHasMore() &&
+        typeof state.onNeedMore === "function" &&
+        !state.busy
+      ) {
+        state.busy = true;
+        await refresh();
+        try {
+          const added = await state.onNeedMore(state);
+          if (!added) break;
+        } finally {
+          state.busy = false;
+        }
+        await refresh();
+      }
     }
 
     document.querySelector(`[data-pager-prev="${id}"]`)?.addEventListener("click", () => goPrev());
     document.querySelector(`[data-pager-next="${id}"]`)?.addEventListener("click", () => {
       void goNext();
     });
-    document.querySelector(`[data-pager-size="${id}"]`)?.addEventListener("change", (ev) => {
-      setSize(ev.target.value);
-    });
+    const sizeSel = document.querySelector(`[data-pager-size="${id}"]`);
+    if (sizeSel) {
+      sizeSel.addEventListener("change", (ev) => {
+        void setSize(ev.target.value);
+      });
+      // Some browsers only fire input for keyboard changes on <select>.
+      sizeSel.addEventListener("input", (ev) => {
+        void setSize(ev.target.value);
+      });
+    }
 
     void refresh();
     return state;
