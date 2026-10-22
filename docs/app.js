@@ -1,9 +1,13 @@
 (() => {
   const DEFAULT_API = "https://upae-ff1k.onrender.com";
+  /** Initial synthesize / fetch page size (not shown in the form). */
   const DEFAULT_LIMIT = 50;
   const MAX_LIMIT = 300;
-  const PAGE_SIZE = 300;
-  const SOFT_CAP = 5000;
+  /** Upstream fetch chunk when the user pages past the local buffer. */
+  const FETCH_PAGE_SIZE = 300;
+  const PAGE_SIZE_CHOICES = [10, 25, 50, 100, 200, 300];
+  /** @type {Record<string, object>} */
+  const sectionPagers = {};
 
   const form = document.getElementById("search-form");
   const hint = document.getElementById("form-hint");
@@ -723,12 +727,7 @@
       );
       renderStatus(data);
 
-      const tbody = document.getElementById("occ-tbody");
-      if (tbody && feats.length) {
-        tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
-      }
       if (paging.ctx) {
-        paging.ctx.loadedRows = (data.occurrences.features || []).length;
         const neo = paging.ctx.providers?.NEOTOMA;
         if (neo) {
           neo.loaded = feats.length;
@@ -736,13 +735,36 @@
           neo.total = body.total != null ? Number(body.total) : neo.total;
           neo.hasMore = neoHasMore;
         }
-        paging.ctx.hasMore = Object.values(paging.ctx.providers || {}).some((p) => p.hasMore);
-        setOccButtons({
-          loadMore: Boolean(paging.ctx.hasMore),
-          loadAll: Boolean(paging.ctx.hasMore),
-          stop: false,
-        });
-        updateOccProgress(formatOccProgress(paging.ctx));
+        paging.ctx.hasMore = anyProviderHasMore(paging.ctx.providers);
+      }
+      const occPager = sectionPagers.occ;
+      if (occPager && feats.length) {
+        occPager.items.push(...feats);
+        occPager.availableTotal = occurrenceAvailableCount(data);
+        // Re-render current page (Neotoma rows appear when user pages to them).
+        const start = occPager.page * occPager.size;
+        const bodyEl = document.getElementById("occ-body");
+        if (bodyEl) {
+          bodyEl.innerHTML = occPager.items
+            .slice(start, start + occPager.size)
+            .map(occRowHtml)
+            .join("");
+        }
+        const status = document.querySelector(`[data-pager-status="occ"]`);
+        const next = document.querySelector(`[data-pager-next="occ"]`);
+        if (status) {
+          const loaded = occPager.items.length;
+          const end = Math.min(loaded, start + occPager.size);
+          const catalog = occPager.availableTotal;
+          status.innerHTML = `<strong>${esc(`${start + 1}–${Math.max(start + 1, end)}`)}</strong> of ${esc(
+            loaded.toLocaleString()
+          )} loaded${
+            catalog != null && catalog > loaded
+              ? ` · ${esc(catalog.toLocaleString())} available`
+              : ""
+          }`;
+        }
+        if (next) next.disabled = !(start + occPager.size < occPager.items.length || paging.ctx?.hasMore);
       }
     } catch (err) {
       patchNeotomaDiagnostic(data, "error", String(err.message || err), 0);
@@ -757,7 +779,7 @@
   }
 
   function fieldIds() {
-    return ["taxon", "lat", "lng", "radius_km", "age_min", "age_max", "limit"];
+    return ["taxon", "lat", "lng", "radius_km", "age_min", "age_max"];
   }
 
   exampleBtn.addEventListener("click", () => {
@@ -767,7 +789,6 @@
     document.getElementById("radius_km").value = "500";
     document.getElementById("age_min").value = "";
     document.getElementById("age_max").value = "";
-    document.getElementById("limit").value = String(DEFAULT_LIMIT);
   });
 
   clearBtn.addEventListener("click", () => {
@@ -780,10 +801,9 @@
     for (const id of fieldIds()) {
       const el = document.getElementById(id);
       if (!el) continue;
-      el.value = id === "limit" ? String(DEFAULT_LIMIT) : "";
+      el.value = "";
     }
-    const loadAll = document.getElementById("load_all");
-    if (loadAll) loadAll.checked = false;
+    Object.keys(sectionPagers).forEach((k) => delete sectionPagers[k]);
     hint.textContent = "Provide a taxon/mineral and/or lat + lng.";
     hint.classList.remove("error");
     statusEl.hidden = true;
@@ -820,9 +840,7 @@
     const radius = fieldValue("radius_km");
     const ageMin = fieldValue("age_min");
     const ageMax = fieldValue("age_max");
-    const limitRaw = fieldValue("limit");
-    const limit = limitRaw === "" ? DEFAULT_LIMIT : Number(limitRaw);
-    const loadAll = Boolean(document.getElementById("load_all")?.checked);
+    const limit = DEFAULT_LIMIT;
 
     if (!taxon && !(lat && lng)) {
       hint.textContent = "Provide a taxon/mineral and/or both latitude and longitude.";
@@ -841,12 +859,6 @@
     }
     if (ageMin !== "" && ageMax !== "" && Number(ageMin) > Number(ageMax)) {
       hint.textContent = "Age min (younger) cannot be greater than age max (older).";
-      hint.classList.add("error");
-      return;
-    }
-    const allowedLimits = new Set([10, 25, 50, 100, 200, 300]);
-    if (!allowedLimits.has(limit)) {
-      hint.textContent = "Choose how many to display from the dropdown.";
       hint.classList.add("error");
       return;
     }
@@ -885,7 +897,7 @@
       }
       renderStatus(body);
       await loadIcsIntervals();
-      renderResults(body, limit, { apiBase, query, loadAll });
+      renderResults(body, limit, { apiBase, query });
     } catch (err) {
       hint.textContent = String(err.message || err);
       hint.classList.add("error");
@@ -919,6 +931,138 @@
       .replace(/&lt;(\/?)(sub|sup)&gt;/gi, "<$1$2>")
       .replace(/&amp;(middot|nbsp|deg|times|minus|#x?[0-9a-f]+);/gi, "&$1;");
     return s;
+  }
+
+  function pagerBarHtml(id, pageSize, linksHtml = "") {
+    const opts = PAGE_SIZE_CHOICES.map(
+      (n) =>
+        `<option value="${n}"${n === pageSize ? " selected" : ""}>${n}</option>`
+    ).join("");
+    return `<div class="pager-bar" id="${esc(id)}-pager">
+      <button type="button" class="ghost pager-prev" data-pager-prev="${esc(id)}">Previous</button>
+      <label class="pager-size-field">
+        <span>Display per page</span>
+        <select data-pager-size="${esc(id)}">${opts}</select>
+      </label>
+      <button type="button" class="ghost pager-next" data-pager-next="${esc(id)}">Next</button>
+      <span class="pager-status" data-pager-status="${esc(id)}"></span>
+      ${linksHtml ? `<span class="pager-links">${linksHtml}</span>` : ""}
+    </div>`;
+  }
+
+  /**
+   * Client-side section pager. Optionally fetches more from the API when Next
+   * walks past the end of the local buffer.
+   */
+  function mountPager({
+    id,
+    items,
+    pageSize = DEFAULT_LIMIT,
+    render,
+    getHasMore = () => false,
+    onNeedMore = null,
+    availableTotal = null,
+  }) {
+    const state = {
+      id,
+      items,
+      page: 0,
+      size: Math.max(1, Math.min(Number(pageSize) || DEFAULT_LIMIT, MAX_LIMIT)),
+      render,
+      getHasMore,
+      onNeedMore,
+      availableTotal,
+      busy: false,
+    };
+    sectionPagers[id] = state;
+
+    async function refresh() {
+      const start = state.page * state.size;
+      const slice = state.items.slice(start, start + state.size);
+      const body = document.getElementById(`${id}-body`);
+      if (body) body.innerHTML = state.render(slice);
+
+      const loaded = state.items.length;
+      const hasMore = Boolean(state.getHasMore());
+      const catalog =
+        state.availableTotal != null && Number.isFinite(Number(state.availableTotal))
+          ? Number(state.availableTotal)
+          : null;
+      const end = Math.min(loaded, start + state.size);
+      const canPrev = state.page > 0;
+      const canNext = start + state.size < loaded || hasMore;
+
+      const prev = document.querySelector(`[data-pager-prev="${id}"]`);
+      const next = document.querySelector(`[data-pager-next="${id}"]`);
+      const status = document.querySelector(`[data-pager-status="${id}"]`);
+      const sizeSel = document.querySelector(`[data-pager-size="${id}"]`);
+      if (prev) prev.disabled = !canPrev || state.busy;
+      if (next) next.disabled = !canNext || state.busy;
+      if (sizeSel) sizeSel.value = String(state.size);
+      if (status) {
+        if (!loaded) {
+          status.textContent = "No rows";
+        } else {
+          const range = `${(start + 1).toLocaleString()}–${Math.max(start + 1, end).toLocaleString()}`;
+          const ofLoaded = `of ${loaded.toLocaleString()} loaded`;
+          const ofCatalog =
+            catalog != null && catalog > loaded
+              ? ` · ${catalog.toLocaleString()} available`
+              : catalog != null
+                ? ` · ${catalog.toLocaleString()} total`
+                : "";
+          status.innerHTML = `<strong>${esc(range)}</strong> ${esc(ofLoaded)}${esc(ofCatalog)}`;
+        }
+      }
+    }
+
+    async function goNext() {
+      if (state.busy) return;
+      const start = state.page * state.size;
+      if (start + state.size < state.items.length) {
+        state.page += 1;
+        await refresh();
+        return;
+      }
+      if (!state.getHasMore() || !state.onNeedMore) return;
+      state.busy = true;
+      await refresh();
+      try {
+        const ok = await state.onNeedMore(state);
+        if (ok && state.page * state.size < state.items.length) {
+          // still on last partial page — advance if we now have a full next page worth
+        }
+        if (state.items.length > start + state.size) state.page += 1;
+      } finally {
+        state.busy = false;
+        await refresh();
+      }
+    }
+
+    function goPrev() {
+      if (state.page <= 0 || state.busy) return;
+      state.page -= 1;
+      void refresh();
+    }
+
+    function setSize(n) {
+      const next = Math.max(1, Math.min(Number(n) || DEFAULT_LIMIT, MAX_LIMIT));
+      const firstIdx = state.page * state.size;
+      state.size = next;
+      state.page = Math.floor(firstIdx / state.size);
+      void refresh();
+    }
+
+    document.querySelector(`[data-pager-prev="${id}"]`)?.addEventListener("click", () => goPrev());
+    document.querySelector(`[data-pager-next="${id}"]`)?.addEventListener("click", () => {
+      void goNext();
+    });
+    document.querySelector(`[data-pager-size="${id}"]`)?.addEventListener("change", (ev) => {
+      setSize(ev.target.value);
+    });
+
+    void refresh();
+    return state;
   }
 
   function occurrenceAvailableCount(data) {
@@ -1285,7 +1429,6 @@
     const hierarchy = data.taxonomy?.hierarchy || [];
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
     const sourceTotals = data.occurrences?.source_totals || [];
-    const show = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
     // Drop hollow Neotoma rows (old API parsed the wrong fields → blank table lines).
     const usableFeatures = features.filter((f) => {
       const src = (f.properties || {}).database_source || "";
@@ -1310,7 +1453,7 @@
         }
       }
     }
-    const providers = buildProviderStates(features, sourceTotals, show);
+    const providers = buildProviderStates(features, sourceTotals, DEFAULT_LIMIT);
     const canPage = anyProviderHasMore(providers);
 
     const chronoTaxHtml = chronostratTaxonomyHtml(data, opts.query, icsIntervals || []);
@@ -1354,16 +1497,7 @@
           </div>`
         : "";
     const geologyHtml = units.length
-      ? `${geologyCharts}<ul class="list">${units
-          .map(
-            (u) => `<li>
-              <div class="item-title">${esc(u.unit_name || "Unit")}</div>
-              <div class="item-meta">${esc(u.lithology || "—")} · ${esc(u.age_top_ma ?? "?")}–${esc(
-                u.age_bottom_ma ?? "?"
-              )} Ma · ${esc(u.environment || "")}</div>
-            </li>`
-          )
-          .join("")}</ul>`
+      ? `${geologyCharts}<ul class="list" id="geology-body"></ul>${pagerBarHtml("geology", DEFAULT_LIMIT)}`
       : `<p class="empty">No Macrostrat units.</p>`;
 
     const browse = (data.occurrences?.browse_links || [])
@@ -1378,28 +1512,14 @@
       ? `<a class="occ-link" href="${esc(data.occurrences.view_all_url)}" target="_blank" rel="noopener">Full JSON response</a>`
       : "";
     const totalsLine = formatTotals(sourceTotals, features);
-    const loadsLine = formatProviderLoads(providers);
-    const noMoreMsg = `<span class="sub">No further occurrence pages for this query.</span>`;
+    const availableOcc = occurrenceAvailableCount(data);
 
     const occHtml = features.length
       ? `<div class="table-wrap"><table>
           <thead><tr><th>Source</th><th>Taxon</th><th>Lat, lng</th><th>Paleolat, paleolng</th><th>Ma</th></tr></thead>
-          <tbody id="occ-tbody">${features.map(occRowHtml).join("")}</tbody>
+          <tbody id="occ-body"></tbody>
         </table></div>
-        <p class="occ-progress" id="occ-progress">Showing <strong>${features.length}</strong> loaded occurrence(s)${
-          loadsLine ? ` · ${loadsLine}` : ""
-        }</p>
-        <p class="occ-links" id="occ-links">
-          ${
-            canPage
-              ? `<button type="button" class="linkish" id="occ-load-more">Load more</button>
-                 <button type="button" class="linkish" id="occ-load-all" hidden>Continue loading</button>
-                 <button type="button" class="linkish" id="occ-stop" hidden>Stop</button>`
-              : noMoreMsg
-          }
-          ${viewAllApi}
-          ${browse}
-        </p>`
+        ${pagerBarHtml("occ", DEFAULT_LIMIT, `${viewAllApi}${browse}`)}`
       : `<p class="empty">No occurrences.</p>`;
 
     const specReturned = Number(data.specimens?.returned) || specimens.length;
@@ -1412,99 +1532,32 @@
         ? data.specimens.has_more
         : Boolean(specTotal != null && specReturned < specTotal);
     const specimenHtml = specimens.length
-      ? `<ul class="list" id="specimen-list">${specimens.map(specimenRowHtml).join("")}</ul>
-        <p class="occ-progress" id="specimen-progress">Showing <strong>${specimens.length.toLocaleString()}</strong> loaded voucher(s)${
-          specTotal != null
-            ? ` · iDigBio <strong>${specReturned.toLocaleString()}</strong> of <strong>${specTotal.toLocaleString()}</strong>`
-            : ""
-        }</p>
-        <p class="occ-links" id="specimen-links">
-          ${
-            specHasMore
-              ? `<button type="button" class="linkish" id="specimen-load-more">Load more</button>
-                 <button type="button" class="linkish" id="specimen-load-all" hidden>Continue loading</button>
-                 <button type="button" class="linkish" id="specimen-stop" hidden>Stop</button>`
-              : `<span class="sub">No further iDigBio pages for this query.</span>`
-          }
-        </p>`
+      ? `<ul class="list" id="specimen-body"></ul>${pagerBarHtml("specimen", DEFAULT_LIMIT)}`
       : `<p class="empty">No specimen vouchers.</p>`;
 
     const mediaHtml = media.length
-      ? `<ul class="list">${media
-          .slice(0, show)
-          .map(
-            (m) => `<li>
-              <div class="item-title">${esc(m.title || m.media_id || "Media")}</div>
-              <div class="item-meta">${esc(m.modality || m.media_type || "")} · ${esc(
-                m.physical_object_taxonomy || ""
-              )}${m.url ? ` · <a href="${esc(m.url)}" target="_blank" rel="noopener">open</a>` : ""}</div>
-            </li>`
-          )
-          .join("")}</ul>`
+      ? `<ul class="list" id="media-body"></ul>${pagerBarHtml("media", DEFAULT_LIMIT)}`
       : `<p class="empty">No 3D / CT media.</p>`;
 
-    const mineralHtml =
-      minerals.length || localities.length
-        ? `<ul class="list">${minerals
-            .map(
-              (m) => `<li>
-                <div class="item-title">${esc(m.name || "Mineral")}</div>
-                <div class="item-meta formula">${formatFormula(m.formula)}${
-                  m.url ? ` · <a href="${esc(m.url)}" target="_blank" rel="noopener">Mindat</a>` : ""
-                }</div>
-              </li>`
-            )
-            .join("")}${localities
-            .map(
-              (loc) => `<li>
-                <div class="item-title">${esc(loc.name || "Locality")}</div>
-                <div class="item-meta">${esc(loc.country || "")} · ${esc(loc.lat ?? "")}, ${esc(
-                  loc.lon ?? ""
-                )}</div>
-              </li>`
-            )
-            .join("")}</ul>`
-        : `<p class="empty">No minerals / localities.</p>`;
+    const mineralRows = [
+      ...minerals.map((m) => ({ kind: "mineral", raw: m })),
+      ...localities.map((loc) => ({ kind: "locality", raw: loc })),
+    ];
+    const mineralHtml = mineralRows.length
+      ? `<ul class="list" id="mineral-body"></ul>${pagerBarHtml("mineral", DEFAULT_LIMIT)}`
+      : `<p class="empty">No minerals / localities.</p>`;
 
     const litHtml = literature.length
-      ? `<ul class="list">${literature
-          .slice(0, show)
-          .map((L) => {
-            const authors = (L.authors || []).slice(0, 3).join(", ");
-            const href = L.url || (L.doi ? `https://doi.org/${L.doi}` : null);
-            const title = href
-              ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(L.title || L.doi || "Work")}</a>`
-              : esc(L.title || "Work");
-            return `<li>
-              <div class="item-title">${title}</div>
-              <div class="item-meta">${esc(L.provider || "")} · ${esc(authors)}${
-                L.year ? ` · ${esc(L.year)}` : ""
-              }${L.cited_by_count != null ? ` · cited ${esc(L.cited_by_count)}` : ""}</div>
-            </li>`;
-          })
-          .join("")}</ul>`
+      ? `<ul class="list" id="literature-body"></ul>${pagerBarHtml("literature", DEFAULT_LIMIT)}`
       : `<p class="empty">No literature hits.</p>`;
 
     const climateHtml = studies.length
-      ? `<ul class="list">${studies
-          .slice(0, show)
-          .map(
-            (s) => `<li>
-              <div class="item-title">${esc(s.study_name || s.study_id || "Study")}</div>
-              <div class="item-meta">${esc(s.data_type || "")} · ${esc(s.site_name || "")}${
-                s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ""
-              }</div>
-            </li>`
-          )
-          .join("")}</ul>`
+      ? `<ul class="list" id="climate-body"></ul>${pagerBarHtml("climate", DEFAULT_LIMIT)}`
       : `<p class="empty">No paleoclimate studies.</p>`;
 
-    const availableOcc = occurrenceAvailableCount(data);
-    const occSub = `${features.length.toLocaleString()} loaded${
-      availableOcc > features.length
-        ? ` of ${availableOcc.toLocaleString()} available`
-        : ""
-    }${totalsLine ? ` · ${totalsLine}` : ""}`;
+    const occSub = `${availableOcc.toLocaleString()} available${
+      totalsLine ? ` · ${totalsLine}` : ""
+    }`;
 
     const ageLayers = collectAgeLayers(data, opts.query);
     const agesCount =
@@ -1533,11 +1586,7 @@
       block("Occurrences", occSub, occHtml),
       block(
         "Specimens",
-        `${(data.specimens?.returned ?? specimens.length).toLocaleString()} loaded${
-          data.specimens?.total != null
-            ? ` of ${Number(data.specimens.total).toLocaleString()} available`
-            : ""
-        } · iDigBio`,
+        `${(specTotal ?? specimens.length).toLocaleString()} available · iDigBio`,
         specimenHtml
       ),
       block("3D media", data.media_3d?.has_3d_assets ? "MorphoSource hits" : "None", mediaHtml),
@@ -1554,182 +1603,214 @@
     renderSectionNav();
     wireAgesChartToggle();
 
-    if (!opts.apiBase) return;
+    Object.keys(sectionPagers).forEach((k) => delete sectionPagers[k]);
 
-    void fetchDeferredNeotoma(opts.apiBase, opts.query, data);
-
-    paging.cancel = false;
-    paging.ctx = {
-      apiBase: opts.apiBase,
-      query: opts.query,
-      providers,
-      hasMore: canPage,
-      loadedRows: features.length,
-    };
-
-    wireOccControls(Boolean(opts.loadAll) && canPage);
-
-    specimenPaging.cancel = false;
-    specimenPaging.ctx = {
-      apiBase: opts.apiBase,
-      query: opts.query,
-      offset: specReturned,
-      total: specTotal,
-      hasMore: specHasMore,
-      loadedRows: specimens.length,
-    };
-    wireSpecimenControls(Boolean(opts.loadAll) && specHasMore);
-  }
-
-  function setOccButtons({ loadMore, loadAll, stop }) {
-    const moreBtn = document.getElementById("occ-load-more");
-    const allBtn = document.getElementById("occ-load-all");
-    const stopBtn = document.getElementById("occ-stop");
-    if (moreBtn) moreBtn.hidden = !loadMore;
-    if (allBtn) allBtn.hidden = !loadAll;
-    if (stopBtn) stopBtn.hidden = !stop;
-  }
-
-  function updateOccProgress(message) {
-    const el = document.getElementById("occ-progress");
-    if (el) el.innerHTML = message;
-  }
-
-  function wireOccControls(autoLoadAll) {
-    const moreBtn = document.getElementById("occ-load-more");
-    const allBtn = document.getElementById("occ-load-all");
-    const stopBtn = document.getElementById("occ-stop");
-
-    if (moreBtn) {
-      moreBtn.addEventListener("click", () => {
-        void runPaging({ continuous: false });
-      });
-    }
-    if (allBtn) {
-      allBtn.addEventListener("click", () => {
-        void runPaging({ continuous: true });
-      });
-    }
-    if (stopBtn) {
-      stopBtn.addEventListener("click", () => {
-        paging.cancel = true;
+    if (units.length) {
+      mountPager({
+        id: "geology",
+        items: units,
+        pageSize: DEFAULT_LIMIT,
+        render: (slice) =>
+          slice
+            .map(
+              (u) => `<li>
+              <div class="item-title">${esc(u.unit_name || "Unit")}</div>
+              <div class="item-meta">${esc(u.lithology || "—")} · ${esc(u.age_top_ma ?? "?")}–${esc(
+                u.age_bottom_ma ?? "?"
+              )} Ma · ${esc(u.environment || "")}</div>
+            </li>`
+            )
+            .join(""),
       });
     }
 
-    if (autoLoadAll && paging.ctx?.hasMore) {
-      void runPaging({ continuous: true });
+    if (features.length) {
+      const occItems = features.slice();
+      paging.cancel = false;
+      paging.ctx = {
+        apiBase: opts.apiBase,
+        query: opts.query,
+        providers,
+        hasMore: canPage,
+      };
+      mountPager({
+        id: "occ",
+        items: occItems,
+        pageSize: DEFAULT_LIMIT,
+        availableTotal: availableOcc,
+        getHasMore: () => Boolean(paging.ctx?.hasMore),
+        onNeedMore: opts.apiBase
+          ? async (state) => {
+              const added = await fetchNextOccurrencePages(paging.ctx, state.items);
+              return added > 0;
+            }
+          : null,
+        render: (slice) => slice.map(occRowHtml).join(""),
+      });
+    }
+
+    if (specimens.length) {
+      const specItems = specimens.slice();
+      specimenPaging.cancel = false;
+      specimenPaging.ctx = {
+        apiBase: opts.apiBase,
+        query: opts.query,
+        offset: specReturned,
+        total: specTotal,
+        hasMore: specHasMore,
+      };
+      mountPager({
+        id: "specimen",
+        items: specItems,
+        pageSize: DEFAULT_LIMIT,
+        availableTotal: specTotal,
+        getHasMore: () => Boolean(specimenPaging.ctx?.hasMore),
+        onNeedMore: opts.apiBase
+          ? async (state) => {
+              const added = await fetchNextSpecimenPage(specimenPaging.ctx, state.items);
+              return added > 0;
+            }
+          : null,
+        render: (slice) => slice.map(specimenRowHtml).join(""),
+      });
+    }
+
+    if (media.length) {
+      mountPager({
+        id: "media",
+        items: media,
+        pageSize: DEFAULT_LIMIT,
+        render: (slice) =>
+          slice
+            .map(
+              (m) => `<li>
+              <div class="item-title">${esc(m.title || m.media_id || "Media")}</div>
+              <div class="item-meta">${esc(m.modality || m.media_type || "")} · ${esc(
+                m.physical_object_taxonomy || ""
+              )}${m.url ? ` · <a href="${esc(m.url)}" target="_blank" rel="noopener">open</a>` : ""}</div>
+            </li>`
+            )
+            .join(""),
+      });
+    }
+
+    if (mineralRows.length) {
+      mountPager({
+        id: "mineral",
+        items: mineralRows,
+        pageSize: DEFAULT_LIMIT,
+        render: (slice) =>
+          slice
+            .map((row) => {
+              if (row.kind === "mineral") {
+                const m = row.raw;
+                return `<li>
+                <div class="item-title">${esc(m.name || "Mineral")}</div>
+                <div class="item-meta formula">${formatFormula(m.formula)}${
+                  m.url ? ` · <a href="${esc(m.url)}" target="_blank" rel="noopener">Mindat</a>` : ""
+                }</div>
+              </li>`;
+              }
+              const loc = row.raw;
+              return `<li>
+                <div class="item-title">${esc(loc.name || "Locality")}</div>
+                <div class="item-meta">${esc(loc.country || "")} · ${esc(loc.lat ?? "")}, ${esc(
+                  loc.lon ?? ""
+                )}</div>
+              </li>`;
+            })
+            .join(""),
+      });
+    }
+
+    if (literature.length) {
+      mountPager({
+        id: "literature",
+        items: literature,
+        pageSize: DEFAULT_LIMIT,
+        render: (slice) =>
+          slice
+            .map((L) => {
+              const authors = (L.authors || []).slice(0, 3).join(", ");
+              const href = L.url || (L.doi ? `https://doi.org/${L.doi}` : null);
+              const title = href
+                ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(L.title || L.doi || "Work")}</a>`
+                : esc(L.title || "Work");
+              return `<li>
+              <div class="item-title">${title}</div>
+              <div class="item-meta">${esc(L.provider || "")} · ${esc(authors)}${
+                L.year ? ` · ${esc(L.year)}` : ""
+              }${L.cited_by_count != null ? ` · cited ${esc(L.cited_by_count)}` : ""}</div>
+            </li>`;
+            })
+            .join(""),
+      });
+    }
+
+    if (studies.length) {
+      mountPager({
+        id: "climate",
+        items: studies,
+        pageSize: DEFAULT_LIMIT,
+        render: (slice) =>
+          slice
+            .map(
+              (s) => `<li>
+              <div class="item-title">${esc(s.study_name || s.study_id || "Study")}</div>
+              <div class="item-meta">${esc(s.data_type || "")} · ${esc(s.site_name || "")}${
+                s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ""
+              }</div>
+            </li>`
+            )
+            .join(""),
+      });
+    }
+
+    if (opts.apiBase) {
+      void fetchDeferredNeotoma(opts.apiBase, opts.query, data);
     }
   }
 
-  function setSpecimenButtons({ loadMore, loadAll, stop }) {
-    const moreBtn = document.getElementById("specimen-load-more");
-    const allBtn = document.getElementById("specimen-load-all");
-    const stopBtn = document.getElementById("specimen-stop");
-    if (moreBtn) moreBtn.hidden = !loadMore;
-    if (allBtn) allBtn.hidden = !loadAll;
-    if (stopBtn) stopBtn.hidden = !stop;
-  }
-
-  function updateSpecimenProgress(message) {
-    const el = document.getElementById("specimen-progress");
-    if (el) el.innerHTML = message;
-  }
-
-  function formatSpecimenProgress(ctx, prefix = "Showing") {
-    return `${prefix} <strong>${ctx.loadedRows.toLocaleString()}</strong> loaded voucher(s)${
-      ctx.total != null
-        ? ` · iDigBio <strong>${ctx.loadedRows.toLocaleString()}</strong> of <strong>${Number(
-            ctx.total
-          ).toLocaleString()}</strong>`
-        : ""
-    }.`;
-  }
-
-  function wireSpecimenControls(autoLoadAll) {
-    document.getElementById("specimen-load-more")?.addEventListener("click", () => {
-      void runSpecimenPaging({ continuous: false });
-    });
-    document.getElementById("specimen-load-all")?.addEventListener("click", () => {
-      void runSpecimenPaging({ continuous: true });
-    });
-    document.getElementById("specimen-stop")?.addEventListener("click", () => {
-      specimenPaging.cancel = true;
-    });
-    if (autoLoadAll && specimenPaging.ctx?.hasMore) {
-      void runSpecimenPaging({ continuous: true });
-    }
-  }
-
-  async function fetchSpecimenPage(ctx) {
+  async function fetchNextSpecimenPage(ctx, items) {
+    if (!ctx?.hasMore || !ctx.apiBase) return 0;
     const qs = new URLSearchParams();
     qs.set("provider", "IDIGBIO");
     qs.set("offset", String(ctx.offset));
-    qs.set("limit", String(PAGE_SIZE));
+    qs.set("limit", String(FETCH_PAGE_SIZE));
     if (ctx.query?.taxon) qs.set("taxon", ctx.query.taxon);
     const resp = await fetch(`${ctx.apiBase}/api/v1/specimens?${qs.toString()}`);
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok || body.status !== "success") {
       throw new Error(formatApiError(body) || body.detail || `HTTP ${resp.status}`);
     }
-    return body;
+    const rows = body.records || [];
+    items.push(...rows);
+    ctx.offset = body.next_offset != null ? body.next_offset : ctx.offset + (body.returned || rows.length);
+    if (body.total != null) ctx.total = body.total;
+    ctx.hasMore = Boolean(body.has_more);
+    const pager = sectionPagers.specimen;
+    if (pager && body.total != null) pager.availableTotal = body.total;
+    return rows.length;
   }
 
-  async function runSpecimenPaging({ continuous }) {
-    if (!specimenPaging.ctx || specimenPaging.busy) return;
-    const ctx = specimenPaging.ctx;
-    if (!ctx.hasMore) return;
-
-    specimenPaging.busy = true;
-    specimenPaging.cancel = false;
-    setSpecimenButtons({ loadMore: false, loadAll: false, stop: true });
-
-    const list = document.getElementById("specimen-list");
-    try {
-      do {
-        if (specimenPaging.cancel) break;
-        if (ctx.loadedRows >= SOFT_CAP) {
-          updateSpecimenProgress(
-            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> vouchers${
-              ctx.total != null ? ` · catalog <strong>${Number(ctx.total).toLocaleString()}</strong>` : ""
-            }. Continue to load more.`
-          );
-          setSpecimenButtons({ loadMore: true, loadAll: true, stop: false });
-          specimenPaging.busy = false;
-          return;
-        }
-
-        updateSpecimenProgress(
-          `Paging iDigBio… ${formatSpecimenProgress(ctx, "loaded")}`
-        );
-
-        const page = await fetchSpecimenPage(ctx);
-        const rows = page.records || [];
-        if (list && rows.length) {
-          list.insertAdjacentHTML("beforeend", rows.map(specimenRowHtml).join(""));
-        }
-        ctx.loadedRows += rows.length;
-        ctx.offset = page.next_offset != null ? page.next_offset : ctx.offset + (page.returned || rows.length);
-        if (page.total != null) ctx.total = page.total;
-        ctx.hasMore = Boolean(page.has_more);
-
-        if (!continuous) break;
-      } while (ctx.hasMore && !specimenPaging.cancel);
-
-      if (specimenPaging.cancel) {
-        updateSpecimenProgress(`Stopped. ${formatSpecimenProgress(ctx)}`);
-      } else {
-        updateSpecimenProgress(formatSpecimenProgress(ctx));
-      }
-    } catch (err) {
-      updateSpecimenProgress(`Paging error: ${esc(err.message || err)}`);
-    } finally {
-      specimenPaging.busy = false;
-      setSpecimenButtons({
-        loadMore: Boolean(ctx.hasMore),
-        loadAll: Boolean(ctx.hasMore),
-        stop: false,
-      });
+  async function fetchNextOccurrencePages(ctx, items) {
+    if (!ctx?.hasMore || !ctx.apiBase) return 0;
+    const due = PAGEABLE_PROVIDERS.filter((p) => ctx.providers[p]?.hasMore);
+    if (!due.length) {
+      ctx.hasMore = false;
+      return 0;
     }
+    const pages = await Promise.all(due.map((p) => fetchOccPage(ctx, p)));
+    let added = 0;
+    for (let i = 0; i < due.length; i++) {
+      const provider = due[i];
+      const page = pages[i];
+      const feats = applyPageToProvider(ctx, provider, page);
+      items.push(...feats);
+      added += feats.length;
+    }
+    ctx.hasMore = anyProviderHasMore(ctx.providers);
+    return added;
   }
 
   function mapGbifRecord(rec) {
@@ -1761,7 +1842,7 @@
   async function fetchGbifDirect(state, query) {
     const q = query || {};
     const qs = new URLSearchParams();
-    qs.set("limit", String(PAGE_SIZE));
+    qs.set("limit", String(FETCH_PAGE_SIZE));
     qs.set("offset", String(state.offset));
     qs.set("hasCoordinate", "true");
     if (q.taxon) qs.set("scientificName", q.taxon);
@@ -1798,7 +1879,7 @@
     const qs = new URLSearchParams();
     qs.set("provider", provider);
     qs.set("offset", String(state.offset));
-    qs.set("limit", String(PAGE_SIZE));
+    qs.set("limit", String(FETCH_PAGE_SIZE));
     const q = ctx.query || {};
     if (q.taxon) qs.set("taxon", q.taxon);
     if (q.lat) qs.set("lat", q.lat);
@@ -1829,75 +1910,5 @@
     state.hasMore = Boolean(page.has_more);
     if (page.window_exhausted) state.hasMore = false;
     return feats;
-  }
-
-  async function runPaging({ continuous }) {
-    if (!paging.ctx || paging.busy) return;
-    const ctx = paging.ctx;
-    if (!anyProviderHasMore(ctx.providers)) return;
-
-    paging.busy = true;
-    paging.cancel = false;
-    setOccButtons({ loadMore: false, loadAll: false, stop: true });
-
-    const tbody = document.getElementById("occ-tbody");
-    let windowNote = "";
-    try {
-      do {
-        if (paging.cancel) break;
-        if (ctx.loadedRows >= SOFT_CAP) {
-          updateOccProgress(
-            `Paused at soft display cap of <strong>${SOFT_CAP.toLocaleString()}</strong> rows · ${formatProviderLoads(
-              ctx.providers
-            )}. Continue to load more, or use browse links for the full catalogs.`
-          );
-          setOccButtons({ loadMore: true, loadAll: true, stop: false });
-          paging.busy = false;
-          return;
-        }
-
-        const due = PAGEABLE_PROVIDERS.filter((p) => ctx.providers[p]?.hasMore);
-        if (!due.length) break;
-
-        updateOccProgress(
-          `Paging ${due.join(", ")}… showing <strong>${ctx.loadedRows.toLocaleString()}</strong> · ${formatProviderLoads(
-            ctx.providers
-          )}`
-        );
-
-        const pages = await Promise.all(due.map((p) => fetchOccPage(ctx, p)));
-        for (let i = 0; i < due.length; i++) {
-          const provider = due[i];
-          const page = pages[i];
-          const feats = applyPageToProvider(ctx, provider, page);
-          if (tbody && feats.length) {
-            tbody.insertAdjacentHTML("beforeend", feats.map(occRowHtml).join(""));
-          }
-          ctx.loadedRows += feats.length;
-          if (page.window_exhausted) {
-            windowNote = ` GBIF search API window max 100,000 — use Browse all on GBIF for the rest.`;
-          }
-        }
-
-        ctx.hasMore = anyProviderHasMore(ctx.providers);
-        if (!continuous) break;
-      } while (ctx.hasMore && !paging.cancel);
-
-      if (paging.cancel) {
-        updateOccProgress(`Stopped. ${formatOccProgress(ctx)}${windowNote}`);
-      } else {
-        updateOccProgress(`${formatOccProgress(ctx)}${windowNote}`);
-      }
-    } catch (err) {
-      updateOccProgress(`Paging error: ${esc(err.message || err)}`);
-    } finally {
-      paging.busy = false;
-      ctx.hasMore = anyProviderHasMore(ctx.providers);
-      setOccButtons({
-        loadMore: Boolean(ctx.hasMore),
-        loadAll: Boolean(ctx.hasMore),
-        stop: false,
-      });
-    }
   }
 })();

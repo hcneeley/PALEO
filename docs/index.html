@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=theme-footer-v1" />
+    <link rel="stylesheet" href="./styles.css?v=section-pager-v1" />
     <script>
       (function () {
         try {
@@ -93,7 +93,7 @@
             />
           </label>
         </div>
-        <div class="field-row field-row-3">
+        <div class="field-row field-row-2">
           <label class="field">
             <span>Age min (younger, Ma)</span>
             <input
@@ -120,22 +120,7 @@
               autocomplete="off"
             />
           </label>
-          <label class="field">
-            <span>Display per source</span>
-            <select id="limit" name="limit" autocomplete="off">
-              <option value="10">10 at once</option>
-              <option value="25">25 at once</option>
-              <option value="50" selected>50 at once</option>
-              <option value="100">100 at once</option>
-              <option value="200">200 at once</option>
-              <option value="300">300 at once</option>
-            </select>
-          </label>
         </div>
-        <label class="check-field">
-          <input id="load_all" name="load_all" type="checkbox" />
-          <span>Load all available occurrence pages (progressive)</span>
-        </label>
         <div class="actions">
           <button type="submit" id="submit-btn">Synthesize</button>
           <button type="button" id="example-btn" class="ghost">Try Canis dirus @ LA</button>
@@ -172,6 +157,6 @@
         Larger catalogs need Browse all on GBIF (download / portal).
       </p>
     </footer>
-    <script src="./app.js?v=status-totals-v1"></script>
+    <script src="./app.js?v=section-pager-v1"></script>
   </body>
 </html>
