@@ -94,7 +94,7 @@ Queries [`/api/media`](https://www.morphosource.org/api/media) with `q=<taxon>&s
 
 Try the search interface at [hcneeley.github.io/upae](https://hcneeley.github.io/upae/) — enter a taxon or mineral, optional location and age bounds, and browse synthesized geology, occurrences, specimens, minerals, and literature from the live API.
 
-Static files live in `docs/` and deploy via [GitHub Pages](https://github.com/hcneeley/upae/settings/pages). Prefer **Source: GitHub Actions** so [`.github/workflows/pages.yml`](.github/workflows/pages.yml) republishes on every `main` push (or run **Actions → Deploy GitHub Pages → Run workflow**).
+Static files live in `docs/` and publish from the `main` branch via [GitHub Pages](https://github.com/hcneeley/upae/settings/pages) (Source: **Deploy from a branch** → `/docs`).
 
 ## Tests
 
