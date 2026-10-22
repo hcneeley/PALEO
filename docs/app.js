@@ -177,6 +177,19 @@
       .replaceAll('"', "&quot;");
   }
 
+  function occurrenceAvailableCount(data) {
+    const totals = data.occurrences?.source_totals;
+    if (Array.isArray(totals) && totals.length) {
+      return totals.reduce((sum, s) => {
+        if (s.total != null && Number.isFinite(Number(s.total))) {
+          return sum + Number(s.total);
+        }
+        return sum + (Number(s.returned) || 0);
+      }, 0);
+    }
+    return Number(data.occurrences?.total_records) || 0;
+  }
+
   function renderStatus(data) {
     const pills = (data.diagnostics || [])
       .map((d) => {
@@ -188,12 +201,21 @@
       })
       .join("");
 
+    const loaded = (data.occurrences?.features || []).length;
+    const available = occurrenceAvailableCount(data);
+    const occLabel =
+      loaded > 0 && available > loaded
+        ? `Occurrences <strong>${esc(loaded.toLocaleString())}</strong> of <strong>${esc(
+            available.toLocaleString()
+          )}</strong>`
+        : `Occurrences <strong>${esc(available.toLocaleString())}</strong>`;
+
     statusEl.hidden = false;
     statusEl.innerHTML = `
       <div class="status-meta">
         <span><strong>${esc(Math.round(data.execution_time_ms))} ms</strong> wall time</span>
         <span>Cache <strong>${esc(data.cache_status)}</strong></span>
-        <span>Occurrences <strong>${esc(data.occurrences?.total_records ?? 0)}</strong></span>
+        <span>${occLabel}</span>
         <span>Literature <strong>${esc((data.literature || []).length)}</strong></span>
       </div>
       <div class="pills">${pills}</div>
@@ -562,9 +584,12 @@
           .join("")}</ul>`
       : `<p class="empty">No paleoclimate studies.</p>`;
 
-    const occSub = `${features.length} loaded${
-      totalsLine ? ` · ${totalsLine}` : ""
-    }`;
+    const availableOcc = occurrenceAvailableCount(data);
+    const occSub = `${features.length.toLocaleString()} loaded${
+      availableOcc > features.length
+        ? ` of ${availableOcc.toLocaleString()} available`
+        : ""
+    }${totalsLine ? ` · ${totalsLine}` : ""}`;
 
     resultsEl.hidden = false;
     resultsEl.innerHTML = [

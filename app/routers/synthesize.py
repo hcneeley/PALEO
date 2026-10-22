@@ -185,6 +185,14 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
             )
         )
 
+    # Prefer upstream catalog totals (e.g. GBIF count) over the capped page size.
+    available_occurrences = 0
+    for src in source_totals:
+        if src.total is not None:
+            available_occurrences += int(src.total)
+        else:
+            available_occurrences += int(src.returned)
+
     idig = results.get("IDIGBIO")
     specimens_raw = (idig.data or {}).get("records") or [] if idig else []
     specimen_records = _safe_models(SpecimenRecord, specimens_raw)
@@ -292,7 +300,7 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         geology=geology,
         paleoclimate_proxy=paleoclimate,
         occurrences=OccurrencesBlock(
-            total_records=len(features),
+            total_records=available_occurrences,
             features=features,
             view_all_url=view_all_url,
             browse_links=_occurrence_browse_links(params),

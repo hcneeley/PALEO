@@ -127,6 +127,7 @@ class OccurrenceSourceTotal(BaseModel):
 
 class OccurrencesBlock(BaseModel):
     type: str = "FeatureCollection"
+    # Upstream-available count (sum of source_totals), not len(features) page size.
     total_records: int = 0
     features: list[OccurrenceFeature] = Field(default_factory=list)
     # Same synthesize URL — open for the full JSON FeatureCollection returned here

@@ -405,6 +405,11 @@ def test_synthesize_happy_path(client, monkeypatch):
     gbif_total = next(s for s in body["occurrences"]["source_totals"] if s["provider"] == "GBIF")
     assert gbif_total["returned"] >= 1
     assert gbif_total["total"] == 1
+    # total_records is upstream-available (GBIF catalog + other returned), not page size
+    assert body["occurrences"]["total_records"] == sum(
+        (s["total"] if s["total"] is not None else s["returned"])
+        for s in body["occurrences"]["source_totals"]
+    )
     assert body["specimens"]["voucher_count"] == 1
     providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
     assert providers["PBDB"] == "ok"
