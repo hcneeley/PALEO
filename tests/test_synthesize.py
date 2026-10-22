@@ -438,6 +438,27 @@ def test_synthesize_happy_path(client, monkeypatch):
 
 
 @respx.mock
+def test_taxon_only_derives_coords_for_macrostrat(client, monkeypatch):
+    """PBDB/GBIF run first; their coords feed Macrostrat/Mindat when lat/lng omitted."""
+    monkeypatch.setenv("MINDAT_API_KEY", "test-token")
+    _mock_live_upstreams(respx)
+    r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "limit": 25})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "success"
+    # Derived from occurrence centroids (PBDB/GBIF/Neotoma), not request params.
+    assert body["query"]["coordinates"]["lat"] is not None
+    assert body["query"]["coordinates"]["lng"] is not None
+    providers = {d["provider"]: d["status"] for d in body["diagnostics"]}
+    assert providers["PBDB"] == "ok"
+    assert providers["GBIF"] == "ok"
+    assert providers["MACROSTRAT"] == "ok"
+    assert body["geology"]["macrostrat_units"][0]["unit_name"] == "Austin Chalk"
+    assert providers["MINDAT"] == "ok"
+    assert body["minerals"]["link_mode"] == "spatial"
+
+
+@respx.mock
 def test_adapter_failure_still_200(client, monkeypatch):
     monkeypatch.setenv("MINDAT_API_KEY", "test-token")
     respx.get(GBIF_MATCH).mock(return_value=httpx.Response(200, json={}))

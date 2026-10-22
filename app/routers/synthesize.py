@@ -44,6 +44,10 @@ from ..models.schemas import (
 
 router = APIRouter(prefix="/api/v1", tags=["synthesize"])
 
+# Occurrence providers that yield coordinates — run before geo-dependent adapters.
+OCCURRENCE_PROVIDERS = ("PBDB", "GBIF", "NEOTOMA")
+
+
 def _safe_models(model, rows: list) -> list:
     out = []
     for row in rows:
@@ -52,6 +56,58 @@ def _safe_models(model, rows: list) -> list:
         except ValidationError:
             continue
     return out
+
+
+def _coords_from_occurrences(
+    results: dict[str, AdapterResult],
+    *,
+    providers: tuple[str, ...] = OCCURRENCE_PROVIDERS,
+) -> tuple[float, float] | None:
+    """Centroid of occurrence point geometries from the given providers."""
+    coords: list[tuple[float, float]] = []
+    for src in providers:
+        adapter = results.get(src)
+        if not adapter or adapter.status != "ok":
+            continue
+        for feat in (adapter.data or {}).get("features") or []:
+            geom = feat.get("geometry") or {}
+            c = geom.get("coordinates")
+            if isinstance(c, list) and len(c) >= 2:
+                try:
+                    # GeoJSON: [lng, lat]
+                    coords.append((float(c[1]), float(c[0])))
+                except (TypeError, ValueError):
+                    continue
+    if not coords:
+        return None
+    return (
+        sum(p[0] for p in coords) / len(coords),
+        sum(p[1] for p in coords) / len(coords),
+    )
+
+
+async def _run_named(
+    names: list[tuple[str, Any]],
+    params: QueryParams,
+) -> dict[str, AdapterResult]:
+    gathered = await asyncio.gather(
+        *[
+            run_adapter(
+                name,
+                partial(fn, params),
+                timeout=settings.timeout_for(name),
+            )
+            for name, fn in names
+        ],
+        return_exceptions=True,
+    )
+    results: dict[str, AdapterResult] = {}
+    for (name, _), item in zip(names, gathered):
+        if isinstance(item, Exception):
+            results[name] = AdapterResult(provider=name, status="error", error=str(item))
+        else:
+            results[item.provider] = item
+    return results
 
 
 def _occurrence_browse_links(params: QueryParams) -> list[OccurrenceBrowseLink]:
@@ -311,88 +367,59 @@ async def synthesize(
     )
 
     t0 = time.perf_counter()
-    names = [
-        ("TAXONOMY", adapters.taxonomy.fetch_and_parse),
+
+    # Phase 1: occurrence providers first so we can harvest coordinates.
+    occurrence_names = [
         ("PBDB", adapters.pbdb.fetch_and_parse),
-        ("MACROSTRAT", adapters.macrostrat.fetch_and_parse),
+        ("GBIF", adapters.gbif.fetch_and_parse),
         ("NEOTOMA", adapters.neotoma.fetch_and_parse),
+    ]
+    # Independent of coords — run alongside phase 1 for latency.
+    parallel_names = [
+        ("TAXONOMY", adapters.taxonomy.fetch_and_parse),
+        ("GNPARSER", adapters.gnparser.fetch_and_parse),
         ("IDIGBIO", adapters.idigbio.fetch_and_parse),
         ("MORPHOSOURCE", adapters.morphosource.fetch_and_parse),
-        ("GBIF", adapters.gbif.fetch_and_parse),
-        ("PALEOCLIMATE", adapters.paleoclimate.fetch_and_parse),
         ("CROSSREF", adapters.crossref.fetch_and_parse),
         ("OPENALEX", adapters.openalex.fetch_and_parse),
-        ("MINDAT", adapters.mindat.fetch_and_parse),
-        ("GNPARSER", adapters.gnparser.fetch_and_parse),
     ]
-    gathered = await asyncio.gather(
-        *[
-            run_adapter(
-                name,
-                partial(fn, params),
-                timeout=settings.timeout_for(name),
-            )
-            for name, fn in names
-        ],
-        return_exceptions=True,
-    )
-    results: dict[str, AdapterResult] = {}
-    for (name, _), item in zip(names, gathered):
-        if isinstance(item, Exception):
-            results[name] = AdapterResult(
-                provider=name, status="error", error=str(item)
-            )
-        else:
-            results[item.provider] = item
 
-    # If the query had no lat/lng but fossil occurrences do, spatially link Mindat
-    # to the taxon's occurrence centroid (place bridge taxa ↔ minerals).
-    mindat = results.get("MINDAT")
-    need_spatial = (
-        (params.lat is None or params.lng is None)
-        and params.taxon
-        and (
-            mindat is None
-            or mindat.status != "ok"
-            or not (mindat.data or {}).get("minerals")
-            or (mindat.data or {}).get("link_mode") == "name"
-        )
-    )
-    if need_spatial:
-        coords: list[tuple[float, float]] = []
-        for src in ("PBDB", "NEOTOMA", "GBIF"):
-            for feat in (results.get(src).data or {}).get("features") or [] if results.get(src) else []:
-                geom = feat.get("geometry") or {}
-                c = geom.get("coordinates")
-                if isinstance(c, list) and len(c) >= 2:
-                    try:
-                        coords.append((float(c[1]), float(c[0])))
-                    except (TypeError, ValueError):
-                        continue
-        if coords:
-            clat = sum(p[0] for p in coords) / len(coords)
-            clng = sum(p[1] for p in coords) / len(coords)
-            spatial_params = QueryParams(
-                lat=clat,
-                lng=clng,
+    phase1_task = asyncio.create_task(_run_named(occurrence_names, params))
+    parallel_task = asyncio.create_task(_run_named(parallel_names, params))
+    results = await phase1_task
+    results.update(await parallel_task)
+
+    # Prefer user coords; otherwise centroid of PBDB/GBIF/Neotoma hits.
+    geo_params = params
+    derived = False
+    if params.lat is None or params.lng is None:
+        centroid = _coords_from_occurrences(results)
+        if centroid is not None:
+            geo_params = QueryParams(
+                lat=centroid[0],
+                lng=centroid[1],
                 radius_km=params.radius_km,
                 taxon=params.taxon,
                 age_min=params.age_min,
                 age_max=params.age_max,
                 limit=params.limit,
             )
-            spatial = await run_adapter(
-                "MINDAT",
-                partial(adapters.mindat.fetch_spatial, spatial_params),
-                timeout=settings.timeout_for("MINDAT"),
-            )
-            if spatial.status == "ok" and (spatial.data or {}).get("minerals"):
-                results["MINDAT"] = spatial
+            derived = True
+
+    # Phase 2: adapters that need / benefit from coordinates.
+    geo_names = [
+        ("MACROSTRAT", adapters.macrostrat.fetch_and_parse),
+        ("MINDAT", adapters.mindat.fetch_and_parse),
+        ("PALEOCLIMATE", adapters.paleoclimate.fetch_and_parse),
+    ]
+    results.update(await _run_named(geo_names, geo_params))
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
     view_all_url = str(request.url)
+    # Expose derived centroid in the query block when we filled lat/lng from occurrences.
+    assemble_params = geo_params if derived else params
     payload = _assemble(
-        params,
+        assemble_params,
         results,
         elapsed_ms=elapsed_ms,
         cache_status="MISS",
