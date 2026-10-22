@@ -27,8 +27,6 @@ from ..models.schemas import (
     MineralLocality,
     MineralRecord,
     MineralsBlock,
-    NameParseBlock,
-    NameParseRecord,
     TaxonomyBlock,
     TaxonomyRank,
     OccurrenceBrowseLink,
@@ -261,16 +259,6 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         link_radius_km=mindat_data.get("link_radius_km"),
     )
 
-    gn = results.get("GNPARSER")
-    gn_data = (gn.data or {}) if gn else {}
-    parses_raw = gn_data.get("parses") or []
-    gn_status = gn.status if gn else "skipped"
-    name_parse_block = NameParseBlock(
-        parse_count=len(parses_raw),
-        parses=_safe_models(NameParseRecord, parses_raw),
-        status=None if gn_status == "ok" else gn_status,
-    )
-
     tax = results.get("TAXONOMY")
     tax_data = (tax.data or {}) if tax else {}
     tax_status = tax.status if tax else "skipped"
@@ -320,7 +308,6 @@ def _assemble(params: QueryParams, results: dict[str, Any], *, elapsed_ms: float
         specimens=specimens,
         media_3d=media,
         minerals=minerals_block,
-        name_parse=name_parse_block,
         literature=literature,
         diagnostics=diagnostics,
     )
@@ -398,7 +385,6 @@ async def synthesize(
     # Independent of coords — run alongside phase 1 for latency.
     parallel_names = [
         ("TAXONOMY", adapters.taxonomy.fetch_and_parse),
-        ("GNPARSER", adapters.gnparser.fetch_and_parse),
         ("IDIGBIO", adapters.idigbio.fetch_and_parse),
         ("MORPHOSOURCE", adapters.morphosource.fetch_and_parse),
         ("CROSSREF", adapters.crossref.fetch_and_parse),

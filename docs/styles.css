@@ -898,9 +898,13 @@ body.ages-popout-open {
   position: fixed;
   inset: 0;
   z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .ages-popout[hidden] {
@@ -908,7 +912,7 @@ body.ages-popout-open {
 }
 
 .ages-popout-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(6, 10, 9, 0.72);
   backdrop-filter: blur(6px);
@@ -919,7 +923,8 @@ body.ages-popout-open {
   position: relative;
   z-index: 1;
   width: min(1100px, 100%);
-  max-height: min(92vh, 960px);
+  max-height: min(92dvh, 960px);
+  margin: auto;
   overflow: auto;
   padding: 1rem 1.15rem 1.35rem;
   border: 1px solid var(--line);

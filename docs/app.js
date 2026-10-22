@@ -478,10 +478,20 @@
     document.body.classList.remove("ages-popout-open");
   }
 
+  function disposeAgesPopout() {
+    closeAgesPopout();
+    document.querySelectorAll("#ages-popout").forEach((el) => el.remove());
+  }
+
   function openAgesPopout() {
     const pop = document.getElementById("ages-popout");
     if (!pop || !agesChartState.payload) return;
     const { layers, intervals } = agesChartState.payload;
+    // #results keeps a transform from its entrance animation, which would make
+    // position:fixed center in the section instead of the viewport — hoist to body.
+    if (pop.parentElement !== document.body) {
+      document.body.appendChild(pop);
+    }
     const chart = document.getElementById("ages-popout-chart");
     const detail = document.getElementById("ages-popout-detail");
     const notes = document.getElementById("ages-popout-notes");
@@ -739,6 +749,7 @@
     hint.classList.remove("error");
     statusEl.hidden = true;
     statusEl.innerHTML = "";
+    disposeAgesPopout();
     resultsEl.hidden = true;
     resultsEl.innerHTML = "";
     hideSectionNav();
@@ -816,6 +827,7 @@
     submitBtn.textContent = "Synthesizing…";
     statusEl.hidden = false;
     statusEl.innerHTML = `<p class="hint">Querying upstream sources… first hits after Render sleep can take ~30–60s.</p>`;
+    disposeAgesPopout();
     resultsEl.hidden = true;
     resultsEl.innerHTML = "";
     hideSectionNav();
@@ -1204,7 +1216,6 @@
     const localities = data.minerals?.localities || [];
     const literature = data.literature || [];
     const studies = data.paleoclimate_proxy?.studies || [];
-    const parses = data.name_parse?.parses || [];
     const hierarchy = data.taxonomy?.hierarchy || [];
     const pbdbHier = data.taxonomy?.pbdb_hierarchy || [];
     const sourceTotals = data.occurrences?.source_totals || [];
@@ -1235,23 +1246,6 @@
     }
     const providers = buildProviderStates(features, sourceTotals, show);
     const canPage = anyProviderHasMore(providers);
-
-    const nameHtml = parses.length
-      ? `<ul class="list">${parses
-          .map(
-            (n) => `<li>
-              <div class="item-title">${esc(n.canonical_simple || n.verbatim || "Name")}</div>
-              <div class="item-meta">
-                ${esc(n.rank || "")}
-                ${n.genus ? ` · genus ${esc(n.genus)}` : ""}
-                ${n.species ? ` · species ${esc(n.species)}` : ""}
-                ${n.authorship_normalized ? ` · ${esc(n.authorship_normalized)}` : ""}
-                ${n.url ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">GNparser</a>` : ""}
-              </div>
-            </li>`
-          )
-          .join("")}</ul>`
-      : `<p class="empty">No name parse.</p>`;
 
     const chronoTaxHtml = chronostratTaxonomyHtml(data, opts.query, icsIntervals || []);
     const taxHtml = hierarchy.length
@@ -1441,6 +1435,7 @@
     agesChartState.full = false;
     const agesHtml = agesSectionHtml(data, opts.query, icsIntervals || []);
 
+    disposeAgesPopout();
     resultsEl.hidden = false;
     resultsEl.innerHTML = [
       block(
@@ -1450,7 +1445,6 @@
           : "Full rank hierarchy",
         taxHtml
       ),
-      block("Name parse", `${parses.length} GNparser result(s)`, nameHtml),
       block("Geology", `${units.length} Macrostrat unit(s)`, geologyHtml),
       block(
         "Ages",

@@ -23,7 +23,6 @@ OPENALEX_URL = "https://api.openalex.org/works"
 MINDAT_SEARCH = "https://api.mindat.org/v1/geomaterials-search/"
 MINDAT_DETAIL = "https://api.mindat.org/v1/geomaterials/1/"
 MINDAT_LOCS = "https://api.mindat.org/v1/localities/"
-GNPARSER_URL = "https://parser.globalnames.org/api/v1/"
 GBIF_MATCH = "https://api.gbif.org/v1/species/match"
 PBDB_TAXA = "https://paleobiodb.org/data1.2/taxa/single.json"
 
@@ -372,29 +371,6 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
         return_value=httpx.Response(200, json={"results": []})
     )
 
-    router.get(url__regex=r"https://parser\.globalnames\.org/api/v1/.+").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {
-                    "parsed": True,
-                    "quality": 1,
-                    "verbatim": "Hadrosaurus",
-                    "normalized": "Hadrosaurus",
-                    "canonical": {
-                        "stemmed": "Hadrosaurus",
-                        "simple": "Hadrosaurus",
-                        "full": "Hadrosaurus",
-                    },
-                    "cardinality": 1,
-                    "rank": "gen.",
-                    "id": "test-id",
-                    "parserVersion": "v1.15.1",
-                }
-            ],
-        )
-    )
-
 
 @respx.mock
 def test_synthesize_happy_path(client, monkeypatch):
@@ -456,9 +432,8 @@ def test_synthesize_happy_path(client, monkeypatch):
     assert pbdb_feat["properties"]["paleolat"] == 30.1
     assert pbdb_feat["properties"]["paleolng"] == -75.2
     assert providers["MINDAT"] == "ok"
-    assert providers["GNPARSER"] == "ok"
-    assert body["name_parse"]["parse_count"] >= 1
-    assert body["name_parse"]["parses"][0]["canonical_simple"] == "Hadrosaurus"
+    assert "GNPARSER" not in providers
+    assert "name_parse" not in body
     assert body["minerals"]["mineral_count"] == 1
     assert body["minerals"]["minerals"][0]["name"] == "Quartz"
     assert body["minerals"]["locality_count"] >= 1
@@ -527,9 +502,6 @@ def test_adapter_failure_still_200(client, monkeypatch):
     )
     respx.get(MINDAT_SEARCH).mock(
         return_value=httpx.Response(200, json={"results": []})
-    )
-    respx.get(url__regex=r"https://parser\\.globalnames\\.org/api/v1/.+").mock(
-        return_value=httpx.Response(200, json=[])
     )
 
     r = client.get("/api/v1/synthesize", params={"taxon": "Hadrosaurus", "lat": 1, "lng": 2})
