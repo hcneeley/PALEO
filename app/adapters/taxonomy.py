@@ -64,6 +64,42 @@ _RANK_ORDER = [
     "CULTIVAR",
 ]
 
+# PBDB data1.2 taxonomic rank codes (config.json?show=ranks)
+_PBDB_RNK = {
+    2: "SUBSPECIES",
+    3: "SPECIES",
+    4: "SUBGENUS",
+    5: "GENUS",
+    6: "SUBTRIBE",
+    7: "TRIBE",
+    8: "SUBFAMILY",
+    9: "FAMILY",
+    10: "SUPERFAMILY",
+    11: "INFRAORDER",
+    12: "SUBORDER",
+    13: "ORDER",
+    14: "SUPERORDER",
+    15: "INFRACLASS",
+    16: "SUBCLASS",
+    17: "CLASS",
+    18: "SUPERCLASS",
+    19: "SUBPHYLUM",
+    20: "PHYLUM",
+    21: "SUPERPHYLUM",
+    22: "SUBKINGDOM",
+    23: "KINGDOM",
+}
+
+# Linnaean slots from PBDB show=class (not immparent — ipl is immediate parent name)
+_PBDB_CLASS_FIELDS = (
+    ("KINGDOM", "kgl"),
+    ("PHYLUM", "phl"),
+    ("CLASS", "cll"),
+    ("ORDER", "odl"),
+    ("FAMILY", "fml"),
+    ("GENUS", "gnl"),
+)
+
 
 def _rank_key(rank: str | None) -> int:
     if not rank:
@@ -96,6 +132,118 @@ def _rank_row(
         "authorship": authorship,
         "status": status,
     }
+
+
+def _pbdb_leaf_rank(pbdb_rec: dict[str, Any]) -> str | None:
+    raw = pbdb_rec.get("rnk")
+    try:
+        return _PBDB_RNK.get(int(raw)) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_pbdb_hierarchy(pbdb_rec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Linnaean chain from PBDB class fields + leaf at its true rank.
+
+    Do not map ``ipl`` (immediate parent from ``immparent``) to SUBGENUS — that
+    repeats the parent family/genus. Subgenera come from ``sgs`` when present.
+    """
+    out: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for rank, key in _PBDB_CLASS_FIELDS:
+        row = _rank_row(
+            rank=rank,
+            name=pbdb_rec.get(key),
+            source="PBDB",
+            taxon_key=pbdb_rec.get("oid"),
+            authorship=pbdb_rec.get("att"),
+        )
+        if row and row["name"] not in seen_names:
+            out.append(row)
+            seen_names.add(row["name"])
+
+    for sg in pbdb_rec.get("sgs") or []:
+        if not isinstance(sg, dict):
+            continue
+        row = _rank_row(
+            rank="SUBGENUS",
+            name=sg.get("nam"),
+            source="PBDB",
+            taxon_key=sg.get("oid") or pbdb_rec.get("oid"),
+        )
+        if row and row["name"] not in seen_names:
+            out.append(row)
+            seen_names.add(row["name"])
+
+    leaf_name = pbdb_rec.get("acn") or pbdb_rec.get("nam")
+    leaf_rank = _pbdb_leaf_rank(pbdb_rec)
+    if leaf_name and leaf_rank:
+        # Skip if this name is already in the chain at any rank (e.g. genus leaf
+        # already listed via gnl) — avoids labeling Coleonyx as SPECIES.
+        if leaf_name not in seen_names:
+            row = _rank_row(
+                rank=leaf_rank,
+                name=leaf_name,
+                source="PBDB",
+                taxon_key=pbdb_rec.get("acc") or pbdb_rec.get("oid"),
+                authorship=pbdb_rec.get("att"),
+                status="accepted" if pbdb_rec.get("acn") else None,
+            )
+            if row:
+                out.append(row)
+                seen_names.add(leaf_name)
+        else:
+            # Same name already present (genus query): ensure rank matches rnk.
+            for row in out:
+                if row["name"] == leaf_name and leaf_rank:
+                    row["rank"] = leaf_rank
+                    break
+    return out
+
+
+def _reconcile_gbif_ranks_with_pbdb(
+    hierarchy: list[dict[str, Any]],
+    pbdb_hierarchy: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Prefer PBDB Linnaean slots when GBIF mislabels the same taxon name.
+
+    GBIF Backbone often ranks Squamata as CLASS with no ORDER; PBDB places it
+    under ORDER with CLASS=Reptilia. Realign matching names and fill empty
+    major ranks from PBDB without overwriting a different family/genus.
+    """
+    if not hierarchy or not pbdb_hierarchy:
+        return hierarchy
+
+    pbdb_by_name = {r["name"]: r for r in pbdb_hierarchy if r.get("name")}
+    for row in hierarchy:
+        pb = pbdb_by_name.get(row.get("name") or "")
+        if pb and pb.get("rank") and pb["rank"] != row.get("rank"):
+            row["rank"] = pb["rank"]
+
+    have_ranks = {r.get("rank") for r in hierarchy}
+    have_names = {r.get("name") for r in hierarchy}
+    major = {"KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS", "SPECIES"}
+    for pr in pbdb_hierarchy:
+        rank, name = pr.get("rank"), pr.get("name")
+        if not rank or not name or rank not in major:
+            continue
+        if rank in have_ranks or name in have_names:
+            continue
+        filled = _rank_row(
+            rank=rank,
+            name=name,
+            source="PBDB",
+            taxon_key=pr.get("taxon_key"),
+            authorship=pr.get("authorship"),
+            status=pr.get("status"),
+        )
+        if filled:
+            hierarchy.append(filled)
+            have_ranks.add(rank)
+            have_names.add(name)
+
+    hierarchy.sort(key=lambda r: _rank_key(r.get("rank")))
+    return hierarchy
 
 
 async def fetch_and_parse(params: QueryParams) -> AdapterResult:
@@ -216,41 +364,16 @@ async def fetch_and_parse(params: QueryParams) -> AdapterResult:
                 hierarchy.append(row)
         hierarchy.sort(key=lambda r: _rank_key(r.get("rank")))
 
-    # PBDB parallel classification (paleo view) — append as alternate chain notes
-    pbdb_hierarchy: list[dict[str, Any]] = []
-    if pbdb_rec:
-        for rank, key in (
-            ("KINGDOM", "kgl"),
-            ("PHYLUM", "phl"),
-            ("CLASS", "cll"),
-            ("ORDER", "odl"),
-            ("FAMILY", "fml"),
-            ("GENUS", "gnl"),
-            ("SUBGENUS", "ipl"),
-        ):
-            row = _rank_row(
-                rank=rank,
-                name=pbdb_rec.get(key),
-                source="PBDB",
-                taxon_key=pbdb_rec.get("oid"),
-                authorship=pbdb_rec.get("att"),
-            )
-            if row:
-                pbdb_hierarchy.append(row)
-        accepted = pbdb_rec.get("acn") or pbdb_rec.get("nam")
-        if accepted:
-            row = _rank_row(
-                rank="SPECIES",
-                name=accepted,
-                source="PBDB",
-                taxon_key=pbdb_rec.get("acc") or pbdb_rec.get("oid"),
-                authorship=pbdb_rec.get("att"),
-                status="accepted" if pbdb_rec.get("acn") else None,
-            )
-            if row:
-                pbdb_hierarchy.append(row)
+    # PBDB parallel classification (paleo view)
+    pbdb_hierarchy: list[dict[str, Any]] = (
+        _build_pbdb_hierarchy(pbdb_rec) if pbdb_rec else []
+    )
 
-    # Merge: primary hierarchy = GBIF; also expose pbdb_hierarchy
+    # Align GBIF rank labels with PBDB when the same name is slotted differently
+    # (e.g. Squamata as CLASS in GBIF vs ORDER in PBDB) and fill missing majors.
+    if hierarchy and pbdb_hierarchy:
+        hierarchy = _reconcile_gbif_ranks_with_pbdb(hierarchy, pbdb_hierarchy)
+
     # When GBIF missing, fall back to PBDB order
     if not hierarchy and pbdb_hierarchy:
         hierarchy = list(pbdb_hierarchy)

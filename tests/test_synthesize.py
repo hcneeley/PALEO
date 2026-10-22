@@ -86,12 +86,15 @@ def _mock_live_upstreams(router: respx.MockRouter) -> None:
                         "nam": "Hadrosaurus foulkii",
                         "acn": "Hadrosaurus foulkii",
                         "att": "Leidy 1858",
+                        "rnk": 3,
                         "kgl": "Animalia",
                         "phl": "Chordata",
                         "cll": "Osteichthyes",
                         "odl": "Ornithischia",
                         "fml": "Hadrosauridae",
                         "gnl": "Hadrosaurus",
+                        "ipl": "Hadrosaurus",
+                        "sgs": [],
                     }
                 ]
             },
