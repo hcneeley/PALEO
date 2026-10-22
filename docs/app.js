@@ -20,6 +20,26 @@
   const sectionNav = document.getElementById("section-nav");
   const sectionNavList = document.getElementById("section-nav-list");
   let sectionScrollBound = false;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let synthesizeDotsTimer = null;
+
+  function startSynthesizeDots() {
+    stopSynthesizeDots();
+    let n = 0;
+    const tick = () => {
+      n = (n % 3) + 1;
+      submitBtn.textContent = `Synthesizing${".".repeat(n)}`;
+    };
+    tick();
+    synthesizeDotsTimer = setInterval(tick, 400);
+  }
+
+  function stopSynthesizeDots() {
+    if (synthesizeDotsTimer != null) {
+      clearInterval(synthesizeDotsTimer);
+      synthesizeDotsTimer = null;
+    }
+  }
 
   topBtn?.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -878,7 +898,7 @@
 
     const url = `${apiBase}/api/v1/synthesize?${qs.toString()}`;
     submitBtn.disabled = true;
-    submitBtn.textContent = "Synthesizing…";
+    startSynthesizeDots();
     statusEl.hidden = false;
     statusEl.innerHTML = `<p class="hint">Querying upstream sources… first hits after Render sleep can take ~30–60s.</p>`;
     disposeAgesPopout();
@@ -898,11 +918,13 @@
       renderStatus(body);
       await loadIcsIntervals();
       renderResults(body, limit, { apiBase, query });
+      scrollToTaxonomyOnMobile();
     } catch (err) {
       hint.textContent = String(err.message || err);
       hint.classList.add("error");
       statusEl.hidden = true;
     } finally {
+      stopSynthesizeDots();
       submitBtn.disabled = false;
       submitBtn.textContent = "Synthesize";
     }
@@ -1183,6 +1205,24 @@
   function hideSectionNav() {
     if (sectionNav) sectionNav.hidden = true;
     if (sectionNavList) sectionNavList.innerHTML = "";
+  }
+
+  function isMobileLayout() {
+    return window.matchMedia("(max-width: 1200px)").matches;
+  }
+
+  /** After synthesize on mobile, land on Taxonomy (below sticky sections nav). */
+  function scrollToTaxonomyOnMobile() {
+    if (!isMobileLayout()) return;
+    const target = document.getElementById(sectionId("Taxonomy"));
+    if (!target) return;
+    requestAnimationFrame(() => {
+      const navH =
+        sectionNav && !sectionNav.hidden ? sectionNav.getBoundingClientRect().height : 0;
+      const top = window.scrollY + target.getBoundingClientRect().top - navH - 10;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      setActiveSectionLink(target.id);
+    });
   }
 
   function setActiveSectionLink(sectionId) {
